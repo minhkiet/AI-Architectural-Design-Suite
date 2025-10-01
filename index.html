@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Surreal Architecture Renderer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0"
+  }
+}
+</script>
+  <style>
+    body {
+      margin: 0;
+      background-color: #f8f9fa;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loader {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 8px solid #e9ecef;
+      border-top-color: #343a40; /* Changed from blue to dark gray */
+      animation: spin 1s linear infinite;
+    }
+
+    /* Tooltip Base */
+    .tooltip-container {
+      position: relative;
+    }
+    
+    .tooltip-container::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      background-color: #1a202c;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      white-space: normal; /* Allow wrapping */
+      width: max-content;
+      max-width: 220px;
+      text-align: left;
+      
+      /* Hidden by default */
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.2s ease-in-out;
+      z-index: 1000;
+    }
+
+    /* Show on hover */
+    .tooltip-container:hover::after {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* Tooltip Position: Right (for sidebar) */
+    .tooltip-right::after {
+      top: 50%;
+      left: 100%;
+      transform: translateY(-50%);
+      margin-left: 10px; /* Spacing from the element */
+    }
+    
+    /* Tooltip Position: Top (for input fields) */
+    .tooltip-top::after {
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 8px; /* Spacing from the element */
+    }
+
+    /* Input Field Styling */
+    textarea::placeholder {
+      color: #a0aec0; /* Lighter placeholder text */
+      opacity: 1; /* Override Firefox's default opacity */
+    }
+
+    /* Hover Effects */
+    div[style*="serviceCard"]:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.07);
+    }
+
+    button[style*="backButton"]:hover {
+        background-color: #f1f5f9 !important;
+        color: #1a202c !important;
+    }
+
+    a[style*="downloadButton"]:hover {
+        background-color: #1a202c !important;
+    }
+
+  </style>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

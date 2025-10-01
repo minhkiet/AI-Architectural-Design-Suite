@@ -1,0 +1,5 @@
+{
+  "name": "AI Surreal Architecture Renderer",
+  "description": "A web application that simulates an AI-powered tool for generating surreal architectural renderings, featuring six distinct creative modes, a modern dark-mode interface, and a history of recent creations.",
+  "requestFramePermissions": []
+}
