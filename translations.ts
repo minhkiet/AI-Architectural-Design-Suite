@@ -20,6 +20,15 @@ type Translations = {
     promptLabel: string;
     mainImageLabel: string;
     decalImageLabel: string;
+    startDateLabel: string;
+    endDateLabel: string;
+    workerCountLabel: string;
+    dimensionsLabel: string;
+    dimensionPlaceholders: {
+      length: string;
+      width: string;
+      height: string;
+    };
     negativePromptLabel: string;
     negativePromptPlaceholder: string;
     stylePresetLabel: string;
@@ -56,6 +65,7 @@ type Translations = {
     historyPlaceholder: string;
     costAnalysisTitle: string;
     taskAnalysisTitle: string;
+    exportToExcel: string;
     totalArea: string;
     totalCost: string;
     costTableHeaders: {
@@ -64,11 +74,14 @@ type Translations = {
       details: string;
     };
     taskTableHeaders: {
+      workerType: string;
+      estimatedWorkers: string;
       task: string;
       priority: string;
-      dueDate: string;
+      timeframe: string;
     };
     downloadImage: string;
+    footerText: string;
     errors: {
       promptRequired: string;
       imageRequired: string;
@@ -130,9 +143,9 @@ export const translations: Translations = {
       },
       [FeatureKey.TASK_GENERATOR]: {
         title: "Tạo Danh sách Công việc",
-        description: "AI sẽ tạo ra một danh sách công việc chi tiết cho dự án dựa trên mô tả của bạn.",
-        promptPlaceholder: "ví dụ: Lập kế hoạch cho dự án thiết kế nội thất căn hộ 2 phòng ngủ",
-        imageUploadLabel: "",
+        description: "AI sẽ tạo ra một danh sách công việc chi tiết, phân bổ theo từng loại thợ dựa trên mô tả, bản vẽ, kích thước, khung thời gian và số lượng nhân công bạn cung cấp.",
+        promptPlaceholder: "ví dụ: Lập kế hoạch thiết kế và thi công hoàn thiện nội thất căn hộ 2 phòng ngủ",
+        imageUploadLabel: "Tải lên Bản vẽ Kỹ thuật (tùy chọn)",
       },
     },
     tooltips: {
@@ -143,7 +156,7 @@ export const translations: Translations = {
       [FeatureKey.SKETCHUP_FINALIZE]: "Nâng cấp các mô hình SketchUp hoặc bản vẽ nét của bạn thành hình ảnh render chân thực.",
       [FeatureKey.PLAN_TO_3D]: "Tự động tạo mô hình 3D từ các bản vẽ mặt bằng 2D để hình dung không gian.",
       [FeatureKey.COST_CALCULATION]: "Nhận ước tính chi phí và diện tích xây dựng nhanh chóng dựa trên mô tả hoặc bản vẽ.",
-      [FeatureKey.TASK_GENERATOR]: "Tự động tạo danh sách công việc và các mốc thời gian cho dự án kiến trúc của bạn.",
+      [FeatureKey.TASK_GENERATOR]: "Tự động tạo danh sách công việc, phân bổ theo loại thợ và các mốc thời gian cho dự án của bạn.",
       stylePreset: "Chọn một phong cách nghệ thuật để áp dụng cho hình ảnh được tạo ra.",
       negativePrompt: "Mô tả những yếu tố bạn muốn loại trừ khỏi hình ảnh cuối cùng.",
       aspectRatio: "Xác định tỷ lệ chiều rộng và chiều cao của hình ảnh cuối cùng.",
@@ -152,6 +165,15 @@ export const translations: Translations = {
     promptLabel: "Yêu cầu",
     mainImageLabel: "Ảnh chính cần chỉnh sửa",
     decalImageLabel: "Ảnh Chi tiết (Decal)",
+    startDateLabel: "Ngày Bắt đầu",
+    endDateLabel: "Ngày Kết thúc",
+    workerCountLabel: "Số lượng Nhân công",
+    dimensionsLabel: "Kích thước thực tế (mét)",
+    dimensionPlaceholders: {
+      length: "Dài",
+      width: "Rộng",
+      height: "Cao",
+    },
     negativePromptLabel: "Yêu cầu Phủ định",
     negativePromptPlaceholder: "Những thứ cần tránh trong ảnh, ví dụ: văn bản, màu đỏ, xấu xí",
     stylePresetLabel: "Phong cách",
@@ -188,6 +210,7 @@ export const translations: Translations = {
     historyPlaceholder: "Chưa có bản kết xuất nào.",
     costAnalysisTitle: "Phân tích Chi phí Sơ bộ",
     taskAnalysisTitle: "Danh sách Công việc Dự án",
+    exportToExcel: "Xuất ra file Excel",
     totalArea: "Tổng diện tích",
     totalCost: "Tổng chi phí",
     costTableHeaders: {
@@ -196,11 +219,14 @@ export const translations: Translations = {
       details: "Chi tiết",
     },
     taskTableHeaders: {
+      workerType: "Loại thợ",
+      estimatedWorkers: "Số lượng (ước tính)",
       task: "Công việc",
       priority: "Độ ưu tiên",
-      dueDate: "Hạn chót",
+      timeframe: "Thời gian / Hạn chót",
     },
     downloadImage: "Tải xuống Ảnh",
+    footerText: "Bản quyền thuộc về nơi không biên giới",
     errors: {
       promptRequired: "Vui lòng nhập yêu cầu.",
       imageRequired: "Vui lòng tải lên một hình ảnh cho tính năng này.",
@@ -259,9 +285,9 @@ export const translations: Translations = {
       },
       [FeatureKey.TASK_GENERATOR]: {
         title: "Task List Generator",
-        description: "The AI will generate a detailed task list for your project based on your description.",
-        promptPlaceholder: "e.g., Plan for a two-bedroom apartment interior design project",
-        imageUploadLabel: "",
+        description: "The AI will generate a detailed task list, categorized by worker type, based on your description, drawing, dimensions, timeframe, and provided number of workers.",
+        promptPlaceholder: "e.g., Plan the design and finishing work for a two-bedroom apartment interior",
+        imageUploadLabel: "Upload Technical Drawing (optional)",
       },
     },
     tooltips: {
@@ -272,7 +298,7 @@ export const translations: Translations = {
       [FeatureKey.SKETCHUP_FINALIZE]: "Upgrade your SketchUp models or line drawings into photorealistic renders.",
       [FeatureKey.PLAN_TO_3D]: "Automatically generate a 3D model from 2D floor plans for spatial visualization.",
       [FeatureKey.COST_CALCULATION]: "Get a quick estimate of construction costs and area based on a description or drawing.",
-      [FeatureKey.TASK_GENERATOR]: "Automatically generate to-do lists and timelines for your architectural projects.",
+      [FeatureKey.TASK_GENERATOR]: "Automatically generate to-do lists, categorized by worker type, with timelines for your project.",
       stylePreset: "Choose an artistic style to apply to the generated image.",
       negativePrompt: "Describe elements you want to exclude from the final image.",
       aspectRatio: "Define the width-to-height ratio of the final image.",
@@ -281,6 +307,15 @@ export const translations: Translations = {
     promptLabel: "Prompt",
     mainImageLabel: "Main Image to Edit",
     decalImageLabel: "Detail Image (Decal)",
+    startDateLabel: "Start Date",
+    endDateLabel: "End Date",
+    workerCountLabel: "Number of Workers",
+    dimensionsLabel: "Actual Dimensions (meters)",
+    dimensionPlaceholders: {
+      length: "Length",
+      width: "Width",
+      height: "Height",
+    },
     negativePromptLabel: "Negative Prompt",
     negativePromptPlaceholder: "Things to avoid in the image, e.g., text, red color, ugly",
     stylePresetLabel: "Style Preset",
@@ -317,6 +352,7 @@ export const translations: Translations = {
     historyPlaceholder: "No renders yet.",
     costAnalysisTitle: "Preliminary Cost Analysis",
     taskAnalysisTitle: "Project Task List",
+    exportToExcel: "Export to Excel",
     totalArea: "Total Area",
     totalCost: "Total Cost",
     costTableHeaders: {
@@ -325,11 +361,14 @@ export const translations: Translations = {
       details: "Details",
     },
     taskTableHeaders: {
+      workerType: "Worker Type",
+      estimatedWorkers: "Est. Workers",
       task: "Task",
       priority: "Priority",
-      dueDate: "Due Date",
+      timeframe: "Timeline / Duration",
     },
     downloadImage: "Download Image",
+    footerText: "Copyright © No Border Place",
     errors: {
       promptRequired: "Please enter a prompt.",
       imageRequired: "Please upload an image for this feature.",

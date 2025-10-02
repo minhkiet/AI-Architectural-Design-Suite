@@ -3,6 +3,8 @@ import { GoogleGenAI, Modality, Type } from '@google/genai';
 import { Feature, FeatureKey, RenderHistoryItem } from './types';
 import { translations } from './translations';
 
+declare var XLSX: any; // Declare XLSX from CDN script
+
 const features: Feature[] = [
   { key: FeatureKey.SURREAL_EXTERIOR, icon: 'fa-solid fa-tree-city', imageUpload: 'optional', outputType: 'image' },
   { key: FeatureKey.INSTANT_INTERIOR, icon: 'fa-solid fa-couch', imageUpload: 'required', outputType: 'image' },
@@ -11,7 +13,7 @@ const features: Feature[] = [
   { key: FeatureKey.SKETCHUP_FINALIZE, icon: 'fa-solid fa-cube', imageUpload: 'required', outputType: 'image' },
   { key: FeatureKey.PLAN_TO_3D, icon: 'fa-solid fa-drafting-compass', imageUpload: 'required', outputType: 'image' },
   { key: FeatureKey.COST_CALCULATION, icon: 'fa-solid fa-calculator', imageUpload: 'optional', outputType: 'text' },
-  { key: FeatureKey.TASK_GENERATOR, icon: 'fa-solid fa-list-check', imageUpload: 'none', outputType: 'text' },
+  { key: FeatureKey.TASK_GENERATOR, icon: 'fa-solid fa-list-check', imageUpload: 'optional', outputType: 'text' },
 ];
 
 const fileToBase64 = (file: File): Promise<{ data: string; mimeType: string }> => {
@@ -75,7 +77,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ label, imageUrl, onFileSe
             <input type="file" accept="image/*" onChange={handleFileChange} ref={fileInputRef} style={styles.fileInput} />
             
             {imageUrl ? (
-                <div style={{ marginTop: '10px', position: 'relative' }}>
+                <div style={styles.imagePreviewContainer}>
                     <img src={imageUrl} alt="Uploaded preview" style={styles.imagePreview} />
                     <button onClick={() => { onClear(); if(fileInputRef.current) fileInputRef.current.value = ''; }} style={styles.clearButton} aria-label="Clear uploaded image">
                         <i className="fa-solid fa-times"></i>
@@ -125,6 +127,18 @@ const App: React.FC = () => {
   const [detailLevel, setDetailLevel] = useState<string>('medium');
   const [language, setLanguage] = useState<Language>('vi');
   const [isStudioVisible, setIsStudioVisible] = useState<boolean>(false);
+
+  // Task Generator State
+  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 30);
+    return date.toISOString().split('T')[0];
+  });
+  const [workerCount, setWorkerCount] = useState<number>(5);
+  const [dimensionLength, setDimensionLength] = useState<number | ''>('');
+  const [dimensionWidth, setDimensionWidth] = useState<number | ''>('');
+  const [dimensionHeight, setDimensionHeight] = useState<number | ''>('');
   
   const T = useMemo(() => translations[language], [language]);
   
@@ -180,6 +194,9 @@ const App: React.FC = () => {
     clearDecalImage();
     setGeneratedImageUrl(null);
     setGeneratedTextOutput(null);
+    setDimensionLength('');
+    setDimensionWidth('');
+    setDimensionHeight('');
     setError(null);
   };
 
@@ -261,23 +278,41 @@ const App: React.FC = () => {
             schema = {
                 type: Type.OBJECT,
                 properties: {
-                    projectName: { type: Type.STRING, description: 'The name of the project the tasks are for.' },
-                    tasks: {
+                    projectName: { type: Type.STRING, description: 'The name of the project.' },
+                    workerBreakdown: {
                         type: Type.ARRAY,
+                        description: 'A list of tasks broken down by worker type.',
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                taskName: { type: Type.STRING, description: 'The name or description of the task.' },
-                                priority: { type: Type.STRING, description: 'Priority level (e.g., High, Medium, Low).' },
-                                dueDate: { type: Type.STRING, description: 'Suggested due date or timeframe (e.g., "End of Week 1", "2024-12-25").' }
+                                workerType: { type: Type.STRING, description: 'The type of worker (e.g., Mason, Painter, Helper, Ironworker).' },
+                                estimatedWorkers: { type: Type.NUMBER, description: 'The estimated number of workers of this type needed.' },
+                                tasks: {
+                                    type: Type.ARRAY,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            taskName: { type: Type.STRING, description: 'The name or description of the task.' },
+                                            priority: { type: Type.STRING, description: 'Priority level (e.g., High, Medium, Low).' },
+                                            timeframe: { type: Type.STRING, description: 'Suggested timeline, duration, or due date for the task (e.g., "Week 1", "3 days", "End of Q4", "2024-12-25").' }
+                                        },
+                                        required: ['taskName', 'priority', 'timeframe']
+                                    }
+                                }
                             },
-                            required: ['taskName', 'priority', 'dueDate']
+                            required: ['workerType', 'estimatedWorkers', 'tasks']
                         }
                     }
                 },
-                required: ['projectName', 'tasks']
+                required: ['projectName', 'workerBreakdown']
             };
-            systemInstruction = `You are an expert project manager for architectural projects. Analyze the user's prompt to generate a structured list of tasks. Respond in the user's language (${language}).`;
+            let dimensionText = '';
+            if (dimensionLength && dimensionWidth && dimensionHeight) {
+                dimensionText = ` The project has the following dimensions: ${dimensionLength}m (length) x ${dimensionWidth}m (width) x ${dimensionHeight}m (height).`;
+            } else if (dimensionLength && dimensionWidth) {
+                dimensionText = ` The project has the following dimensions: ${dimensionLength}m (length) x ${dimensionWidth}m (width).`;
+            }
+            systemInstruction = `You are an expert project manager for architectural projects. Analyze the user's prompt and the provided technical drawing/image to generate a structured list of tasks.${dimensionText} The project must start on ${startDate}, end by ${endDate}, and be completed by a team of approximately ${workerCount} workers. Use the image and dimensions to make the task breakdown more accurate. Break down the tasks by worker type (e.g., Mason, Painter, Helper, Ironworker). For each task, provide a flexible timeline, which could be a duration (e.g., '3 days'), a phase (e.g., 'Week 2'), or a specific due date. Respond in the user's language (${language}).`;
         }
         
         const parts: any[] = [{ text: prompt }];
@@ -359,7 +394,38 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [prompt, uploadedImage, decalImage, selectedFeature, ai, aspectRatio, T, language, negativePrompt, stylePreset, detailLevel]);
+  }, [prompt, uploadedImage, decalImage, selectedFeature, ai, aspectRatio, T, language, negativePrompt, stylePreset, detailLevel, startDate, endDate, workerCount, dimensionLength, dimensionWidth, dimensionHeight]);
+
+  const handleExportTasksToExcel = (data: any) => {
+    if (typeof XLSX === 'undefined') {
+      console.error("XLSX library is not loaded.");
+      setError("Could not export to Excel. Library not found.");
+      return;
+    }
+
+    const flattenedTasks: any[] = [];
+    data.workerBreakdown.forEach((group: any) => {
+      group.tasks.forEach((task: any) => {
+        flattenedTasks.push({
+          [T.taskTableHeaders.workerType]: group.workerType,
+          [T.taskTableHeaders.estimatedWorkers]: group.estimatedWorkers,
+          [T.taskTableHeaders.task]: task.taskName,
+          [T.taskTableHeaders.priority]: task.priority,
+          [T.taskTableHeaders.timeframe]: task.timeframe,
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(flattenedTasks);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Tasks");
+    
+    // Auto-fit columns
+    const max_width = flattenedTasks.reduce((w, r) => Math.max(w, r[T.taskTableHeaders.task].length), 10);
+    worksheet["!cols"] = [ { wch: 20 }, { wch: 15 }, { wch: max_width }, { wch: 15 }, { wch: 20 } ];
+
+    XLSX.writeFile(workbook, `${data.projectName?.replace(/ /g, '_') || 'project'}-tasks.xlsx`);
+  };
 
   const renderTextOutput = (data: any) => (
     <div style={styles.textOutputContainer} className="animate-fade-in">
@@ -395,58 +461,73 @@ const App: React.FC = () => {
 
   const renderTaskOutput = (data: any) => (
     <div style={styles.textOutputContainer} className="animate-fade-in">
-        <h3 style={styles.textOutputTitle}>{T.taskAnalysisTitle}: {data.projectName}</h3>
-        {data.tasks && (
-            <table style={styles.costTable}>
-                <thead>
-                    <tr>
-                        <th style={styles.tableHeader}>{T.taskTableHeaders.task}</th>
-                        <th style={styles.tableHeader}>{T.taskTableHeaders.priority}</th>
-                        <th style={styles.tableHeader}>{T.taskTableHeaders.dueDate}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {data.tasks.map((task: any, index: number) => (
-                        <tr key={index}>
-                            <td style={styles.tableCell}>{task.taskName}</td>
-                            <td style={styles.tableCell}>{task.priority}</td>
-                            <td style={styles.tableCell}>{task.dueDate}</td>
+        <div style={styles.textOutputHeader}>
+          <h3 style={{...styles.textOutputTitle, margin: 0, border: 'none', padding: 0}}>{T.taskAnalysisTitle}: {data.projectName}</h3>
+          <button onClick={() => handleExportTasksToExcel(data)} style={styles.exportButton}>
+            <i className="fa-solid fa-file-excel" style={{ marginRight: '8px' }}></i>
+            {T.exportToExcel}
+          </button>
+        </div>
+        {data.workerBreakdown && data.workerBreakdown.map((breakdown: any, index: number) => (
+            <div key={index} style={{ marginTop: '24px' }}>
+                <h4 style={styles.workerTypeTitle}>
+                    {breakdown.workerType} 
+                    <span style={styles.workerCountChip}>{T.workerCountLabel}: {breakdown.estimatedWorkers}</span>
+                </h4>
+                <table style={styles.costTable}>
+                    <thead>
+                        <tr>
+                            <th style={styles.tableHeader}>{T.taskTableHeaders.task}</th>
+                            <th style={styles.tableHeader}>{T.taskTableHeaders.priority}</th>
+                            <th style={styles.tableHeader}>{T.taskTableHeaders.timeframe}</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
-        )}
+                    </thead>
+                    <tbody>
+                        {breakdown.tasks.map((task: any, taskIndex: number) => (
+                            <tr key={taskIndex}>
+                                <td style={styles.tableCell}>{task.taskName}</td>
+                                <td style={styles.tableCell}>{task.priority}</td>
+                                <td style={styles.tableCell}>{task.timeframe}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        ))}
     </div>
   );
   
   if (!isStudioVisible) {
     return (
         <div style={styles.homePageContainer}>
-            <div style={styles.homeContent}>
-                <header style={styles.homeHeader}>
-                    <div style={styles.langSwitcherHome}>
-                      <button onClick={() => setLanguage('vi')} style={language === 'vi' ? styles.langButtonActive : styles.langButton}>VI</button>
-                      <button onClick={() => setLanguage('en')} style={language === 'en' ? styles.langButtonActive : styles.langButton}>EN</button>
-                    </div>
-                    <i className="fa-solid fa-drafting-compass" style={styles.homeMainIcon}></i>
-                    <h1 style={styles.homeTitle}>{T.homeTitle}</h1>
-                    <p style={styles.homeSubtitle}>{T.homeSubtitle}</p>
-                </header>
-                <div style={styles.servicesGrid}>
-                    {features.map(feature => {
-                        const featureText = T.features[feature.key];
-                        return (
-                            <div key={feature.key} style={styles.serviceCard} onClick={() => { selectFeature(feature.key); setIsStudioVisible(true); }}>
-                                <div style={styles.serviceCardIconWrapper}>
-                                    <i className={feature.icon} style={styles.serviceCardIcon}></i>
+            <div style={styles.homeContentWrapper}>
+                <div style={styles.homeContent}>
+                    <header style={styles.homeHeader}>
+                        <div style={styles.langSwitcherHome}>
+                          <button onClick={() => setLanguage('vi')} style={language === 'vi' ? styles.langButtonActive : styles.langButton}>VI</button>
+                          <button onClick={() => setLanguage('en')} style={language === 'en' ? styles.langButtonActive : styles.langButton}>EN</button>
+                        </div>
+                        <i className="fa-solid fa-drafting-compass" style={styles.homeMainIcon}></i>
+                        <h1 style={styles.homeTitle}>{T.homeTitle}</h1>
+                        <p style={styles.homeSubtitle}>{T.homeSubtitle}</p>
+                    </header>
+                    <div style={styles.servicesGrid}>
+                        {features.map(feature => {
+                            const featureText = T.features[feature.key];
+                            return (
+                                <div key={feature.key} style={styles.serviceCard} onClick={() => { selectFeature(feature.key); setIsStudioVisible(true); }}>
+                                    <div style={styles.serviceCardIconWrapper}>
+                                        <i className={feature.icon} style={styles.serviceCardIcon}></i>
+                                    </div>
+                                    <h3 style={styles.serviceCardTitle}>{featureText.title}</h3>
+                                    <p style={styles.serviceCardDescription}>{T.tooltips[feature.key]}</p>
                                 </div>
-                                <h3 style={styles.serviceCardTitle}>{featureText.title}</h3>
-                                <p style={styles.serviceCardDescription}>{T.tooltips[feature.key]}</p>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
+            <footer style={styles.footer}>{T.footerText}</footer>
         </div>
     );
   }
@@ -455,7 +536,7 @@ const App: React.FC = () => {
     <div style={styles.appContainer}>
       <aside style={styles.sidebar}>
         <div style={styles.sidebarHeader}>
-            <i className="fa-solid fa-drafting-compass" style={{ fontSize: '24px', color: '#2c5282' }}></i>
+            <i className="fa-solid fa-drafting-compass" style={{ fontSize: '24px', color: '#63b3ed' }}></i>
             <h1 style={styles.logo}>{T.logo}</h1>
         </div>
         <nav>
@@ -469,8 +550,8 @@ const App: React.FC = () => {
                       data-tooltip={T.tooltips[feature.key]}
                       onClick={() => selectFeature(feature.key)}
                       style={{...styles.navItem, ...(isSelected ? styles.navItemSelected : {})}}>
-                    <i className={feature.icon} style={{...styles.navIcon, color: isSelected ? '#fff' : '#4a5568' }}></i>
-                    <span style={{color: isSelected ? '#fff' : '#1a202c' }}>{featureText.title}</span>
+                    <i className={feature.icon} style={{...styles.navIcon, color: isSelected ? '#fff' : '#a0aec0' }}></i>
+                    <span style={{color: isSelected ? '#fff' : '#e2e8f0' }}>{featureText.title}</span>
                   </li>
                 );
             })}
@@ -518,6 +599,34 @@ const App: React.FC = () => {
                   style={styles.textarea}
                 />
                 
+                {selectedFeature.key === FeatureKey.TASK_GENERATOR && (
+                  <>
+                    <div style={{ marginTop: '20px' }}>
+                      <label htmlFor="start-date-input" style={styles.label}>{T.startDateLabel}</label>
+                      <input id="start-date-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={styles.textInput} />
+                    </div>
+                    <div style={{ marginTop: '20px' }}>
+                      <label htmlFor="end-date-input" style={styles.label}>{T.endDateLabel}</label>
+                      <input id="end-date-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={styles.textInput} />
+                    </div>
+                    <div style={{ marginTop: '20px' }}>
+                      <label htmlFor="worker-count-input" style={styles.label}>{T.workerCountLabel}</label>
+                      <input id="worker-count-input" type="number" value={workerCount} onChange={e => setWorkerCount(parseInt(e.target.value, 10) || 1)} min="1" style={styles.textInput} />
+                    </div>
+                    <div style={{ marginTop: '20px' }}>
+                        <label style={styles.label}>{T.dimensionsLabel}</label>
+                        <div style={styles.dimensionInputsContainer}>
+                            <input type="number" value={dimensionLength} onChange={e => setDimensionLength(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder={T.dimensionPlaceholders.length} style={styles.dimensionInput} />
+                            <span>x</span>
+                            <input type="number" value={dimensionWidth} onChange={e => setDimensionWidth(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder={T.dimensionPlaceholders.width} style={styles.dimensionInput} />
+                            <span>x</span>
+                            <input type="number" value={dimensionHeight} onChange={e => setDimensionHeight(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder={T.dimensionPlaceholders.height} style={styles.dimensionInput} />
+                            <span style={{marginLeft: '4px'}}> (m)</span>
+                        </div>
+                    </div>
+                  </>
+                )}
+
                 {selectedFeature.outputType === 'image' && !uploadedImageUrl && (
                   <>
                     <div style={{ marginTop: '20px' }} className="tooltip-container tooltip-top" data-tooltip={T.tooltips.stylePreset}>
@@ -605,6 +714,7 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+         <footer style={{...styles.footer, padding: '24px 0 0 0' }}>{T.footerText}</footer>
       </main>
 
       <aside style={styles.historyPanel}>
@@ -632,12 +742,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     // --- START HOMEPAGE STYLES ---
     homePageContainer: {
         display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        backgroundColor: '#1a202c',
+        boxSizing: 'border-box'
+    },
+    homeContentWrapper: {
+        flex: 1,
+        display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: '100vh',
-        backgroundColor: '#f8f9fa',
         padding: '40px',
-        boxSizing: 'border-box'
     },
     homeContent: {
         width: '100%',
@@ -657,18 +772,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     },
     homeMainIcon: {
         fontSize: '48px',
-        color: '#2c5282',
+        color: '#63b3ed',
         marginBottom: '16px'
     },
     homeTitle: {
         fontSize: '48px',
         fontWeight: 700,
-        color: '#1a202c',
+        color: '#f7fafc',
         margin: '0 0 16px 0',
     },
     homeSubtitle: {
         fontSize: '20px',
-        color: '#4a5568',
+        color: '#a0aec0',
         maxWidth: '600px',
         margin: '0 auto',
     },
@@ -678,22 +793,19 @@ const styles: { [key: string]: React.CSSProperties } = {
         gap: '24px',
     },
     serviceCard: {
-        backgroundColor: '#ffffff',
+        backgroundColor: '#2d3748',
         borderRadius: '16px',
         padding: '32px',
-        border: '1px solid #e2e8f0',
+        border: '1px solid #4a5568',
         cursor: 'pointer',
-        transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+        transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out',
         textAlign: 'left',
     },
-    // Hover effect for serviceCard would be managed by a CSS class or inline style state change. Let's add it directly:
-    // ... onMouseEnter/Leave or a CSS :hover class would be better, but for this structure:
-    // The user should add a :hover in the main style tag for this to work best. We'll simulate with inline styles for now.
     serviceCardIconWrapper: {
         width: '56px',
         height: '56px',
         borderRadius: '50%',
-        backgroundColor: 'rgba(44, 82, 130, 0.1)',
+        backgroundColor: 'rgba(99, 179, 237, 0.1)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -701,38 +813,38 @@ const styles: { [key: string]: React.CSSProperties } = {
     },
     serviceCardIcon: {
         fontSize: '24px',
-        color: '#2c5282',
+        color: '#63b3ed',
     },
     serviceCardTitle: {
         fontSize: '20px',
         fontWeight: 600,
-        color: '#1a202c',
+        color: '#f7fafc',
         margin: '0 0 8px 0',
     },
     serviceCardDescription: {
         fontSize: '15px',
-        color: '#4a5568',
+        color: '#a0aec0',
         margin: 0,
         lineHeight: 1.5,
     },
     // --- END HOMEPAGE STYLES ---
 
-    appContainer: { display: 'flex', height: '100vh', backgroundColor: '#f8f9fa' },
-    sidebar: { width: '260px', backgroundColor: '#ffffff', padding: '24px', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' },
-    sidebarHeader: { display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '20px', marginBottom: '20px', borderBottom: '1px solid #e2e8f0' },
-    logo: { fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a202c' },
+    appContainer: { display: 'flex', height: '100vh', backgroundColor: '#1a202c' },
+    sidebar: { width: '260px', backgroundColor: '#2d3748', padding: '24px', borderRight: '1px solid #4a5568', display: 'flex', flexDirection: 'column' },
+    sidebarHeader: { display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '20px', marginBottom: '20px', borderBottom: '1px solid #4a5568' },
+    logo: { fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#f7fafc' },
     navList: { listStyle: 'none', padding: 0, margin: 0 },
     navItem: { display: 'flex', alignItems: 'center', padding: '12px 16px', marginBottom: '8px', borderRadius: '8px', cursor: 'pointer', transition: 'background-color 0.2s, color 0.2s' },
     navItemSelected: { backgroundColor: '#2c5282', color: '#ffffff' },
     navIcon: { marginRight: '12px', width: '20px', textAlign: 'center' },
     mainContent: { flex: 1, display: 'flex', flexDirection: 'column', padding: '32px', overflow: 'hidden' },
     mainHeader: { marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
-    mainTitle: { fontSize: '32px', margin: 0, color: '#1a202c', fontWeight: 700 },
-    mainDescription: { color: '#4a5568', marginTop: '8px', fontSize: '16px' },
+    mainTitle: { fontSize: '32px', margin: 0, color: '#f7fafc', fontWeight: 700 },
+    mainDescription: { color: '#a0aec0', marginTop: '8px', fontSize: '16px' },
     backButton: {
       background: 'transparent',
-      border: '1px solid #e2e8f0',
-      color: '#4a5568',
+      border: '1px solid #4a5568',
+      color: '#a0aec0',
       width: '44px',
       height: '44px',
       borderRadius: '50%',
@@ -744,17 +856,18 @@ const styles: { [key: string]: React.CSSProperties } = {
       transition: 'background-color 0.2s, color 0.2s',
     },
     langSwitcher: { display: 'flex', gap: '8px' },
-    langButton: { padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: '600', color: '#4a5568' },
+    langButton: { padding: '8px 16px', border: '1px solid #4a5568', borderRadius: '6px', background: 'transparent', cursor: 'pointer', fontWeight: '600', color: '#a0aec0' },
     langButtonActive: { padding: '8px 16px', border: '1px solid #2c5282', borderRadius: '6px', background: '#2c5282', cursor: 'default', fontWeight: '600', color: 'white' },
     contentArea: { display: 'flex', flex: 1, gap: '24px', minHeight: 0 },
-    inputPanel: { flex: '0 0 450px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: 'white', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' },
+    inputPanel: { flex: '0 0 450px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: '#2d3748', padding: '24px', borderRadius: '12px', border: '1px solid #4a5568' },
     inputGroup: { flex: 1, overflowY: 'auto', paddingRight: '10px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: '600', color: '#2d3748', fontSize: '14px' },
-    textarea: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #4a5568', resize: 'vertical', boxSizing: 'border-box', fontSize: '16px', backgroundColor: '#2d3748', color: '#ffffff' },
-    select: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #4a5568', boxSizing: 'border-box', fontSize: '16px', appearance: 'none', background: '#2d3748 url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23a0aec0%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 12px center', backgroundSize: '12px', color: '#ffffff' },
+    label: { display: 'block', marginBottom: '8px', fontWeight: '600', color: '#a0aec0', fontSize: '14px' },
+    textarea: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #4a5568', resize: 'vertical', boxSizing: 'border-box', fontSize: '16px', backgroundColor: '#1a202c', color: '#ffffff' },
+    textInput: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #4a5568', boxSizing: 'border-box', fontSize: '16px', backgroundColor: '#1a202c', color: '#ffffff' },
+    select: { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #4a5568', boxSizing: 'border-box', fontSize: '16px', appearance: 'none', background: '#1a202c url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23a0aec0%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E") no-repeat right 12px center', backgroundSize: '12px', color: '#ffffff' },
     fileInput: { display: 'none' },
     dropzone: {
-      border: '2px dashed #d2d6dc',
+      border: '2px dashed #4a5568',
       borderRadius: '12px',
       padding: '30px',
       textAlign: 'center',
@@ -763,36 +876,49 @@ const styles: { [key: string]: React.CSSProperties } = {
       marginTop: '10px'
     },
     dropzoneActive: {
-      borderColor: '#2c5282',
-      backgroundColor: 'rgba(44, 82, 130, 0.05)'
+      borderColor: '#63b3ed',
+      backgroundColor: 'rgba(99, 179, 237, 0.1)'
     },
     dropzoneIcon: {
       fontSize: '32px',
-      color: '#2c5282',
+      color: '#63b3ed',
       marginBottom: '12px',
     },
     dropzoneText: {
       margin: '0 0 4px 0',
-      color: '#4a5568',
+      color: '#a0aec0',
       fontWeight: 500
     },
     dropzoneBrowse: {
-      color: '#2c5282',
+      color: '#63b3ed',
       fontWeight: 600,
       textDecoration: 'underline'
     },
     dropzoneHelperText: {
       margin: 0,
       fontSize: '12px',
-      color: '#a0aec0'
+      color: '#718096'
     },
-    imagePreview: { maxWidth: '100%', maxHeight: '150px', marginTop: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', objectFit: 'cover', width: '100%' },
+    imagePreviewContainer: {
+        position: 'relative',
+        marginTop: '10px',
+        width: '100%',
+        height: '200px',
+        backgroundColor: '#1a202c',
+        borderRadius: '8px',
+        border: '1px solid #4a5568',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    imagePreview: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' },
     clearButton: { position: 'absolute', top: '5px', right: '5px', background: 'rgba(0, 0, 0, 0.6)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     generateButton: { width: '100%', padding: '14px', borderRadius: '8px', border: 'none', backgroundColor: '#2c5282', color: 'white', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', transition: 'background-color 0.2s', marginTop: '16px' },
-    generateButtonDisabled: { backgroundColor: '#a0aec0', cursor: 'not-allowed' },
-    errorText: { color: '#dc3545', marginTop: '10px', textAlign: 'center' },
-    outputPanel: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff', borderRadius: '12px', border: '2px dashed #e2e8f0', flexDirection: 'column', gap: '1rem', padding: '16px', overflow: 'auto' },
-    loaderText: { color: '#4a5568', fontSize: '1.1rem', fontWeight: '500' },
+    generateButtonDisabled: { backgroundColor: '#4a5568', cursor: 'not-allowed' },
+    errorText: { color: '#e53e3e', marginTop: '10px', textAlign: 'center' },
+    outputPanel: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a202c', borderRadius: '12px', border: '2px dashed #4a5568', flexDirection: 'column', gap: '1rem', padding: '16px', overflow: 'auto' },
+    loaderText: { color: '#a0aec0', fontSize: '1.1rem', fontWeight: '500' },
     generatedImageContainer: { position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     generatedImage: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' },
     downloadButton: {
@@ -813,21 +939,61 @@ const styles: { [key: string]: React.CSSProperties } = {
         textDecoration: 'none',
         transition: 'background-color 0.2s',
     },
-    placeholderText: { color: '#4a5568', fontSize: '16px', textAlign: 'center' },
-    historyPanel: { width: '320px', backgroundColor: '#ffffff', padding: '24px', borderLeft: '1px solid #e2e8f0', overflowY: 'auto' },
-    historyTitle: { fontSize: '20px', margin: '0 0 20px 0', color: '#1a202c', fontWeight: 600 },
+    placeholderText: { color: '#a0aec0', fontSize: '16px', textAlign: 'center' },
+    historyPanel: { width: '320px', backgroundColor: '#2d3748', padding: '24px', borderLeft: '1px solid #4a5568', overflowY: 'auto' },
+    historyTitle: { fontSize: '20px', margin: '0 0 20px 0', color: '#f7fafc', fontWeight: 600 },
     historyList: { listStyle: 'none', padding: 0, margin: 0 },
-    historyItem: { marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' },
-    historyImage: { width: '100%', borderRadius: '8px', marginBottom: '12px', border: '1px solid #e2e8f0' },
-    historyItemTitle: { margin: '0 0 5px 0', fontWeight: 600, color: '#1a202c' },
-    historyItemPrompt: { margin: '0 0 8px 0', fontSize: '14px', color: '#4a5568', maxHeight: '60px', overflow: 'hidden' },
-    historyItemTimestamp: { color: '#a0aec0', fontSize: '12px' },
-    textOutputContainer: { width: '100%', height: '100%', padding: '16px', boxSizing: 'border-box', textAlign: 'left', color: '#1a202c', overflowY: 'auto' },
-    textOutputTitle: { marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' },
-    summaryBox: { display: 'flex', justifyContent: 'space-around', background: '#f7fafc', padding: '16px', borderRadius: '8px', margin: '16px 0', fontSize: '1.1em' },
+    historyItem: { marginBottom: '20px', borderBottom: '1px solid #4a5568', paddingBottom: '20px' },
+    historyImage: { width: '100%', borderRadius: '8px', marginBottom: '12px', border: '1px solid #4a5568' },
+    historyItemTitle: { margin: '0 0 5px 0', fontWeight: 600, color: '#f7fafc' },
+    historyItemPrompt: { margin: '0 0 8px 0', fontSize: '14px', color: '#a0aec0', maxHeight: '60px', overflow: 'hidden' },
+    historyItemTimestamp: { color: '#718096', fontSize: '12px' },
+    textOutputContainer: { width: '100%', height: '100%', padding: '16px', boxSizing: 'border-box', textAlign: 'left', color: '#e2e8f0', overflowY: 'auto' },
+    textOutputHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #4a5568', paddingBottom: '10px' },
+    textOutputTitle: { marginTop: 0, color: '#63b3ed' },
+    exportButton: {
+        padding: '8px 16px',
+        borderRadius: '8px',
+        border: 'none',
+        backgroundColor: '#2f855a',
+        color: 'white',
+        cursor: 'pointer',
+        fontSize: '14px',
+        fontWeight: 'bold',
+        transition: 'background-color 0.2s',
+        display: 'flex',
+        alignItems: 'center',
+    },
+    summaryBox: { display: 'flex', justifyContent: 'space-around', background: '#1a202c', padding: '16px', borderRadius: '8px', margin: '16px 0', fontSize: '1.1em' },
     costTable: { width: '100%', borderCollapse: 'collapse', marginTop: '16px' },
-    tableHeader: { borderBottom: '2px solid #2c5282', padding: '12px', textAlign: 'left', color: '#2d3748' },
-    tableCell: { borderBottom: '1px solid #e2e8f0', padding: '12px' },
+    tableHeader: { borderBottom: '2px solid #63b3ed', padding: '12px', textAlign: 'left', color: '#e2e8f0' },
+    tableCell: { borderBottom: '1px solid #4a5568', padding: '12px' },
+    workerTypeTitle: { fontSize: '18px', color: '#e2e8f0', borderBottom: '1px solid #4a5568', paddingBottom: '8px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    workerCountChip: { backgroundColor: '#4a5568', color: '#f7fafc', padding: '4px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: '500' },
+    dimensionInputsContainer: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: '#a0aec0',
+    },
+    dimensionInput: {
+        flex: 1,
+        padding: '12px',
+        borderRadius: '8px',
+        border: '1px solid #4a5568',
+        boxSizing: 'border-box',
+        fontSize: '16px',
+        backgroundColor: '#1a202c',
+        color: '#ffffff',
+        textAlign: 'center'
+    },
+    footer: {
+        textAlign: 'center',
+        padding: '20px',
+        fontSize: '14px',
+        color: '#718096',
+        flexShrink: 0,
+    },
 };
 
 export default App;
