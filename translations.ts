@@ -15,9 +15,10 @@ type Translations = {
       };
     };
     tooltips: {
-      [key in FeatureKey | 'stylePreset' | 'negativePrompt' | 'aspectRatio' | 'detailLevel']: string;
+      [key in FeatureKey | 'stylePreset' | 'negativePrompt' | 'aspectRatio' | 'detailLevel' | 'rerunPrompt']: string;
     };
     promptLabel: string;
+    analyzingForSuggestions: string;
     mainImageLabel: string;
     decalImageLabel: string;
     startDateLabel: string;
@@ -80,7 +81,35 @@ type Translations = {
       priority: string;
       timeframe: string;
     };
+    promptPrefixes: {
+      image_to_image: {
+        [key in FeatureKey]?: string;
+      };
+    };
+    suggestionPrompts: {
+      [key in FeatureKey | 'default']?: string;
+    };
+    techDrawingOptions: {
+      groupLabel: string;
+      drawingScale: { label: string; placeholder: string; };
+      lineThickness: { label: string; options: { thin: string; medium: string; thick: string; }; };
+      lineStyle: { label: string; options: { solid: string; dashed: string; dotted: string; }; };
+      symbolLibrary: { label: string; options: { generic: string; ansi: string; iso: string; }; };
+    };
+    techDrawingSpecifications: (specs: { scale: string; thickness: string; style: string; library: string; }) => string;
     downloadImage: string;
+    editImage: string;
+    refineImageTitle: string;
+    refinePromptLabel: string;
+    refinePromptPlaceholder: string;
+    refineDecalLabel: string;
+    refineButton: string;
+    refiningButton: string;
+    refinedImageAlt: string;
+    saveAndReplace: string;
+    tryAgain: string;
+    closeButton: string;
+    refinedLabel: string;
     footerText: string;
     errors: {
       promptRequired: string;
@@ -135,6 +164,12 @@ export const translations: Translations = {
         promptPlaceholder: "ví dụ: Mô hình 3D khối trắng, ánh sáng ban ngày, không có nội thất",
         imageUploadLabel: "Tải lên Ảnh Mặt bằng 2D",
       },
+       [FeatureKey.REAL_TO_TECH_DRAWING]: {
+        title: "Chuyển Ảnh Thực thành Bản vẽ Kỹ thuật 2D",
+        description: "Tải lên ảnh chụp công trình thực tế. AI sẽ chuyển đổi nó thành một bản vẽ kỹ thuật với các đường nét, chi tiết và ký hiệu chuyên nghiệp.",
+        promptPlaceholder: "ví dụ: Bản vẽ mặt cắt ngang, chi tiết cửa sổ nhôm kính",
+        imageUploadLabel: "Tải lên Ảnh chụp công trình thực tế",
+      },
       [FeatureKey.COST_CALCULATION]: {
         title: "Tính toán Kích thước & Chi phí",
         description: "AI sẽ ước tính sơ bộ diện tích và chi phí xây dựng/hoàn thiện dựa trên thông tin đầu vào.",
@@ -155,14 +190,17 @@ export const translations: Translations = {
       [FeatureKey.SMART_EDIT]: "Chỉnh sửa hình ảnh render của bạn bằng cách mô tả các thay đổi hoặc cung cấp một hình ảnh chi tiết.",
       [FeatureKey.SKETCHUP_FINALIZE]: "Nâng cấp các mô hình SketchUp hoặc bản vẽ nét của bạn thành hình ảnh render chân thực.",
       [FeatureKey.PLAN_TO_3D]: "Tự động tạo mô hình 3D từ các bản vẽ mặt bằng 2D để hình dung không gian.",
+      [FeatureKey.REAL_TO_TECH_DRAWING]: "Chuyển đổi ảnh chụp một công trình thành một bản vẽ kỹ thuật 2D chi tiết.",
       [FeatureKey.COST_CALCULATION]: "Nhận ước tính chi phí và diện tích xây dựng nhanh chóng dựa trên mô tả hoặc bản vẽ.",
       [FeatureKey.TASK_GENERATOR]: "Tự động tạo danh sách công việc, phân bổ theo loại thợ và các mốc thời gian cho dự án của bạn.",
       stylePreset: "Chọn một phong cách nghệ thuật để áp dụng cho hình ảnh được tạo ra.",
       negativePrompt: "Mô tả những yếu tố bạn muốn loại trừ khỏi hình ảnh cuối cùng.",
       aspectRatio: "Xác định tỷ lệ chiều rộng và chiều cao của hình ảnh cuối cùng.",
       detailLevel: "Kiểm soát mức độ chi tiết và phức tạp trong kết quả render.",
+      rerunPrompt: "Chạy lại với cùng prompt và cài đặt",
     },
     promptLabel: "Yêu cầu",
+    analyzingForSuggestions: "Đang phân tích ảnh để đưa ra gợi ý...",
     mainImageLabel: "Ảnh chính cần chỉnh sửa",
     decalImageLabel: "Ảnh Chi tiết (Decal)",
     startDateLabel: "Ngày Bắt đầu",
@@ -225,8 +263,57 @@ export const translations: Translations = {
       priority: "Độ ưu tiên",
       timeframe: "Thời gian / Hạn chót",
     },
+    promptPrefixes: {
+      image_to_image: {
+        [FeatureKey.SURREAL_EXTERIOR]: "Phân tích kỹ các yếu tố kiến trúc trong ảnh gốc. Giữ lại cấu trúc và bố cục chính, sau đó biến đổi nó theo yêu cầu sau:",
+        [FeatureKey.INSTANT_INTERIOR]: "Phân tích kỹ bố cục và cấu trúc của căn phòng trong ảnh. Giữ nguyên các yếu tố chính (cửa sổ, cửa ra vào), và thiết kế lại nội thất theo phong cách sau:",
+        [FeatureKey.MASTER_PLAN]: "Dựa trên bản đồ hoặc ảnh vệ tinh này, hãy tạo ra một bản quy hoạch tổng thể. Đảm bảo thiết kế của bạn tích hợp chặt chẽ với các đặc điểm hiện có trong ảnh. Yêu cầu chi tiết:",
+        [FeatureKey.SKETCHUP_FINALIZE]: "Phân tích bản phác thảo hoặc mô hình đường nét này. Render nó thành một hình ảnh quang học, thêm vào các kết cấu và ánh sáng thực tế. TUYỆT ĐỐI KHÔNG thay đổi hình dạng kiến trúc cơ bản. Yêu cầu chi tiết:",
+        [FeatureKey.PLAN_TO_3D]: "Dựa trên mặt bằng 2D này, hãy dựng một mô hình khối 3D. Mô hình phải phản ánh chính xác tỷ lệ và cách sắp xếp các phòng như trong bản vẽ. Yêu cầu chi tiết:",
+        [FeatureKey.REAL_TO_TECH_DRAWING]: "Phân tích ảnh chụp thực tế này và chuyển đổi nó thành một bản vẽ kỹ thuật 2D. Bản vẽ phải thể hiện chính xác tỷ lệ và các chi tiết kiến trúc có trong ảnh. Yêu cầu chi tiết:",
+      }
+    },
+    suggestionPrompts: {
+      [FeatureKey.SURREAL_EXTERIOR]: "Bạn là một AI trợ lý kiến trúc. Phân tích hình ảnh ngoại thất này và đề xuất 3-4 prompt sáng tạo để biến đổi nó thành một phối cảnh siêu thực. Tập trung vào các thay đổi về vật liệu, ánh sáng, môi trường, hoặc phong cách kiến trúc.",
+      [FeatureKey.INSTANT_INTERIOR]: "Bạn là một AI trợ lý thiết kế nội thất. Phân tích hình ảnh nội thất này và đề xuất 3-4 phong cách thiết kế khác nhau có thể áp dụng cho không gian này (ví dụ: Tối giản, Hiện đại giữa thế kỷ, Scandinavian, Công nghiệp).",
+      [FeatureKey.MASTER_PLAN]: "Bạn là một AI trợ lý quy hoạch đô thị. Phân tích bản đồ/ảnh vệ tinh này và đề xuất 3-4 ý tưởng quy hoạch tổng thể khác nhau (ví dụ: khu dân cư mật độ cao, khu phức hợp thương mại, công viên trung tâm).",
+      [FeatureKey.SMART_EDIT]: "Bạn là một AI trợ lý chỉnh sửa ảnh kiến trúc. Phân tích hình ảnh này và đề xuất 3-4 thay đổi cụ thể có thể thực hiện (ví dụ: 'thay đổi vật liệu tường thành gạch', 'thêm cây xanh ở ban công', 'làm cho bầu trời trong xanh hơn').",
+      [FeatureKey.SKETCHUP_FINALIZE]: "Bạn là một AI chuyên gia render. Phân tích bản vẽ đường nét/sketchup này và đề xuất 3-4 kịch bản render khác nhau, tập trung vào vật liệu, ánh sáng ban ngày, hoặc bối cảnh (ví dụ: 'render với vật liệu bê tông và kính, ánh sáng ban ngày', 'đặt trong bối cảnh đô thị vào lúc hoàng hôn').",
+      [FeatureKey.PLAN_TO_3D]: "Bạn là một AI chuyên gia mô hình hóa 3D. Phân tích mặt bằng 2D này và đề xuất 3-4 prompt để tạo mô hình 3D, tập trung vào các kiểu khối khác nhau (ví dụ: 'mô hình khối trắng đơn giản', 'mô hình 3D với vật liệu cơ bản', 'mô hình 3D cắt lớp để lộ nội thất').",
+      [FeatureKey.REAL_TO_TECH_DRAWING]: "Bạn là một AI trợ lý kiến trúc sư. Phân tích hình ảnh công trình này và đề xuất 3-4 loại bản vẽ kỹ thuật có thể được tạo ra (ví dụ: 'tạo bản vẽ mặt đứng chính', 'vẽ chi tiết mặt cắt cửa sổ', 'phác thảo phối cảnh 2 điểm tụ').",
+      default: "Phân tích hình ảnh này và đề xuất 3-4 prompt sáng tạo liên quan đến kiến trúc."
+    },
+    techDrawingOptions: {
+      groupLabel: "Tùy chọn Bản vẽ Kỹ thuật",
+      drawingScale: { label: "Tỷ lệ Bản vẽ", placeholder: "ví dụ: 1:100, 1:50" },
+      lineThickness: {
+        label: "Độ dày Nét vẽ",
+        options: { thin: "Mỏng", medium: "Vừa", thick: "Dày" }
+      },
+      lineStyle: {
+        label: "Kiểu Nét vẽ",
+        options: { solid: "Nét liền", dashed: "Nét đứt", dotted: "Nét chấm" }
+      },
+      symbolLibrary: {
+        label: "Thư viện Ký hiệu",
+        options: { generic: "Chung", ansi: "ANSI (Mỹ)", iso: "ISO (Quốc tế)" }
+      }
+    },
+    techDrawingSpecifications: ({ scale, thickness, style, library }) => `Hãy tuân thủ các thông số kỹ thuật sau: Tỷ lệ bản vẽ là ${scale}. Độ dày nét vẽ là ${thickness}. Kiểu nét vẽ là ${style}. Sử dụng thư viện ký hiệu kiến trúc ${library}.`,
     downloadImage: "Tải xuống Ảnh",
-    footerText: "Bản quyền thuộc về nơi không biên giới",
+    editImage: "Chỉnh sửa Ảnh",
+    refineImageTitle: "Tinh chỉnh Ảnh",
+    refinePromptLabel: "Mô tả thay đổi",
+    refinePromptPlaceholder: "ví dụ: làm cho bầu trời kịch tính hơn, thêm một cái cây ở bên trái",
+    refineDecalLabel: "Ảnh chi tiết để thêm vào (tùy chọn)",
+    refineButton: "Áp dụng",
+    refiningButton: "Đang áp dụng...",
+    refinedImageAlt: "Xem trước ảnh đã tinh chỉnh",
+    saveAndReplace: "Lưu & Thay thế",
+    tryAgain: "Thử lại",
+    closeButton: "Đóng",
+    refinedLabel: "Đã tinh chỉnh",
+    footerText: "Copyright © No Border Place",
     errors: {
       promptRequired: "Vui lòng nhập yêu cầu.",
       imageRequired: "Vui lòng tải lên một hình ảnh cho tính năng này.",
@@ -277,6 +364,12 @@ export const translations: Translations = {
         promptPlaceholder: "e.g., White block 3D model, daylight, no furniture",
         imageUploadLabel: "Upload a 2D floor plan image",
       },
+      [FeatureKey.REAL_TO_TECH_DRAWING]: {
+        title: "Real Photo to 2D Tech Drawing",
+        description: "Upload a real photo of a building. The AI will convert it into a technical drawing with professional lines, details, and symbols.",
+        promptPlaceholder: "e.g., Cross-section drawing, aluminum and glass window details",
+        imageUploadLabel: "Upload a Real Photo of the Building",
+      },
       [FeatureKey.COST_CALCULATION]: {
         title: "Cost & Size Calculation",
         description: "The AI provides a preliminary estimate of the area and construction/finishing costs based on the input.",
@@ -297,14 +390,17 @@ export const translations: Translations = {
       [FeatureKey.SMART_EDIT]: "Modify your rendered images by describing changes or providing a detail image.",
       [FeatureKey.SKETCHUP_FINALIZE]: "Upgrade your SketchUp models or line drawings into photorealistic renders.",
       [FeatureKey.PLAN_TO_3D]: "Automatically generate a 3D model from 2D floor plans for spatial visualization.",
+      [FeatureKey.REAL_TO_TECH_DRAWING]: "Convert a photograph of a building into a detailed 2D technical drawing.",
       [FeatureKey.COST_CALCULATION]: "Get a quick estimate of construction costs and area based on a description or drawing.",
       [FeatureKey.TASK_GENERATOR]: "Automatically generate to-do lists, categorized by worker type, with timelines for your project.",
       stylePreset: "Choose an artistic style to apply to the generated image.",
       negativePrompt: "Describe elements you want to exclude from the final image.",
       aspectRatio: "Define the width-to-height ratio of the final image.",
       detailLevel: "Control the amount of detail and complexity in the rendered output.",
+      rerunPrompt: "Re-run with the same prompt and settings",
     },
     promptLabel: "Prompt",
+    analyzingForSuggestions: "Analyzing image for suggestions...",
     mainImageLabel: "Main Image to Edit",
     decalImageLabel: "Detail Image (Decal)",
     startDateLabel: "Start Date",
@@ -367,7 +463,56 @@ export const translations: Translations = {
       priority: "Priority",
       timeframe: "Timeline / Duration",
     },
+    promptPrefixes: {
+      image_to_image: {
+        [FeatureKey.SURREAL_EXTERIOR]: "Carefully analyze the architectural elements in the source image. Retain the main structure and layout, then transform it according to the following prompt:",
+        [FeatureKey.INSTANT_INTERIOR]: "Carefully analyze the layout and structure of the room in the image. Keep the core elements (windows, doors) intact, and redesign the interior in the following style:",
+        [FeatureKey.MASTER_PLAN]: "Using this map or satellite image as a base, create a master plan. Ensure your design integrates tightly with the existing features shown in the image. Detailed request:",
+        [FeatureKey.SKETCHUP_FINALIZE]: "Analyze this sketch or line model. Render it into a photorealistic image, adding realistic textures and lighting. STRICTLY DO NOT change the underlying architectural shape. Detailed request:",
+        [FeatureKey.PLAN_TO_3D]: "Based on this 2D floor plan, extrude a 3D block model. The model must accurately reflect the proportions and arrangement of rooms as shown in the drawing. Detailed request:",
+        [FeatureKey.REAL_TO_TECH_DRAWING]: "Analyze this real photograph and convert it into a 2D technical drawing. The drawing must accurately represent the proportions and architectural details present in the photo. Detailed request:",
+      }
+    },
+    suggestionPrompts: {
+      [FeatureKey.SURREAL_EXTERIOR]: "You are an architectural assistant AI. Analyze this exterior image and suggest 3-4 creative prompts to transform it into a surreal render. Focus on changes to materials, lighting, environment, or architectural style.",
+      [FeatureKey.INSTANT_INTERIOR]: "You are an interior designer AI. Analyze this interior photo and suggest 3-4 different design styles that could be applied to this space (e.g., Minimalist, Mid-century Modern, Scandinavian, Industrial).",
+      [FeatureKey.MASTER_PLAN]: "You are an urban planner AI. Analyze this map/satellite image and suggest 3-4 different master plan concepts (e.g., high-density residential, mixed-use commercial center, central park).",
+      [FeatureKey.SMART_EDIT]: "You are an architectural photo editing AI. Analyze this image and suggest 3-4 specific, concrete changes that could be made (e.g., 'change wall material to brick', 'add plants to the balcony', 'make the sky clearer').",
+      [FeatureKey.SKETCHUP_FINALIZE]: "You are a rendering specialist AI. Analyze this line drawing/sketchup model and suggest 3-4 different rendering scenarios focusing on materials, time of day, or context (e.g., 'render with concrete and glass materials, daylight', 'place in an urban context at dusk').",
+      [FeatureKey.PLAN_TO_3D]: "You are a 3D modeling AI. Analyze this 2D floor plan and suggest 3-4 prompts for creating a 3D model, focusing on different block styles (e.g., 'simple white block model', '3D model with basic materials', 'cut-away 3D model showing interior').",
+      [FeatureKey.REAL_TO_TECH_DRAWING]: "You are an architectural assistant AI. Analyze this building photo and suggest 3-4 types of technical drawings that could be generated from it (e.g., 'create a front elevation drawing', 'draw a detailed window cross-section', 'sketch a 2-point perspective').",
+      default: "Analyze this image and provide 3-4 creative, architecture-related prompt suggestions."
+    },
+    techDrawingOptions: {
+      groupLabel: "Technical Drawing Options",
+      drawingScale: { label: "Drawing Scale", placeholder: "e.g., 1:100, 1:50" },
+      lineThickness: {
+        label: "Line Thickness",
+        options: { thin: "Thin", medium: "Medium", thick: "Thick" }
+      },
+      lineStyle: {
+        label: "Line Style",
+        options: { solid: "Solid", dashed: "Dashed", dotted: "Dotted" }
+      },
+      symbolLibrary: {
+        label: "Symbol Library",
+        options: { generic: "Generic", ansi: "ANSI (American)", iso: "ISO (International)" }
+      }
+    },
+    techDrawingSpecifications: ({ scale, thickness, style, library }) => `Adhere to the following drawing specifications: The drawing scale is ${scale}. The line thickness should be ${thickness}. The line style should be ${style}. Use the ${library} architectural symbol library.`,
     downloadImage: "Download Image",
+    editImage: "Edit Image",
+    refineImageTitle: "Refine Image",
+    refinePromptLabel: "Describe your changes",
+    refinePromptPlaceholder: "e.g., make the sky more dramatic, add a tree on the left",
+    refineDecalLabel: "Detail image to add (optional)",
+    refineButton: "Apply",
+    refiningButton: "Applying...",
+    refinedImageAlt: "Refined image preview",
+    saveAndReplace: "Save & Replace",
+    tryAgain: "Try Again",
+    closeButton: "Close",
+    refinedLabel: "Refined",
     footerText: "Copyright © No Border Place",
     errors: {
       promptRequired: "Please enter a prompt.",
