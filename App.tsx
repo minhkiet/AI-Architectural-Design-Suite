@@ -51,6 +51,14 @@ interface ImageUploaderProps {
 const ImageUploader: React.FC<ImageUploaderProps> = ({ label, imageUrl, onFileSelect, onClear, T, styles }) => {
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    const handleFileValidation = (file: File | null): boolean => {
+        if (file && !file.type.startsWith('image/')) {
+            console.warn("Invalid file type rejected:", file.type);
+            return false;
+        }
+        return true;
+    };
 
     const handleDragEvents = (e: React.DragEvent<HTMLDivElement>, isEntering: boolean) => {
         e.preventDefault();
@@ -69,13 +77,21 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ label, imageUrl, onFileSe
         e.stopPropagation();
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            onFileSelect(e.dataTransfer.files[0]);
+            const file = e.dataTransfer.files[0];
+            if (handleFileValidation(file)) {
+                onFileSelect(file);
+            }
             e.dataTransfer.clearData();
         }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onFileSelect(e.target.files?.[0] ?? null);
+        const file = e.target.files?.[0] ?? null;
+        if (handleFileValidation(file)) {
+            onFileSelect(file);
+        } else if (e.target) {
+            e.target.value = ''; // Clear the input if the file is invalid
+        }
     };
 
     return (
@@ -225,7 +241,7 @@ const App: React.FC = () => {
   }, [ai, T]);
 
   const processMainFile = (file: File | null) => {
-    if (file && file.type.startsWith('image/')) {
+    if (file) {
       if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
       setUploadedImage(file);
       setUploadedImageUrl(URL.createObjectURL(file));
@@ -240,7 +256,7 @@ const App: React.FC = () => {
   };
 
   const processDecalFile = (file: File | null) => {
-    if (file && file.type.startsWith('image/')) {
+    if (file) {
         if (decalImageUrl) URL.revokeObjectURL(decalImageUrl);
         setDecalImage(file);
         setDecalImageUrl(URL.createObjectURL(file));
@@ -248,7 +264,7 @@ const App: React.FC = () => {
   };
 
    const processRefineDecalFile = (file: File | null) => {
-    if (file && file.type.startsWith('image/')) {
+    if (file) {
         if (refineDecalImageUrl) URL.revokeObjectURL(refineDecalImageUrl);
         setRefineDecalImage(file);
         setRefineDecalImageUrl(URL.createObjectURL(file));
