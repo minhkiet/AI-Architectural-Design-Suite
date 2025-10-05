@@ -159,6 +159,7 @@ const App: React.FC = () => {
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState<boolean>(false);
   const [isGeneratingDetailedPrompt, setIsGeneratingDetailedPrompt] = useState<boolean>(false);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState<boolean>(false);
 
   // Task Generator State
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -173,6 +174,7 @@ const App: React.FC = () => {
   const [dimensionHeight, setDimensionHeight] = useState<number | ''>('');
   
   // Tech Drawing State
+  const [drawingType, setDrawingType] = useState<string>('front_elevation');
   const [drawingScale, setDrawingScale] = useState<string>('1:100');
   const [lineThickness, setLineThickness] = useState<string>('medium');
   const [lineStyle, setLineStyle] = useState<string>('solid');
@@ -288,6 +290,27 @@ const App: React.FC = () => {
     }
   }, [ai, T, uploadedImage]);
 
+  const handleGenerateDescriptivePromptForTechDrawing = useCallback(async (imageFile: File) => {
+    setIsGeneratingDescription(true);
+    setPrompt('');
+    setError(null);
+    try {
+        const { data, mimeType } = await fileToBase64(imageFile);
+        const systemInstruction = T.suggestionPrompts[FeatureKey.REAL_TO_TECH_DRAWING];
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [{ inlineData: { data, mimeType } }] },
+            config: { systemInstruction }
+        });
+        setPrompt(response.text.trim());
+    } catch (e) {
+        console.error("Failed to generate descriptive prompt for tech drawing:", e);
+        setError(T.errors.general(e instanceof Error ? e.message : String(e)));
+    } finally {
+        setIsGeneratingDescription(false);
+    }
+}, [ai, T]);
+
   const processMainFile = (file: File | null) => {
     if (file) {
       if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
@@ -296,8 +319,11 @@ const App: React.FC = () => {
       setGeneratedImageUrl(null);
       setGeneratedTextOutput(null);
       setError(null);
-      // Trigger suggestion generation
-      if (selectedFeature.imageUpload !== 'none') {
+      
+      // Trigger specific auto-prompt generation based on feature
+      if (selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING) {
+        handleGenerateDescriptivePromptForTechDrawing(file);
+      } else if (selectedFeature.imageUpload !== 'none') {
         generatePromptSuggestions(file, selectedFeature.key);
       }
     }
@@ -357,6 +383,7 @@ const App: React.FC = () => {
     setCameraAngle('eye_level');
     setSetting('');
     // Reset tech drawing options
+    setDrawingType('front_elevation');
     setDrawingScale('1:100');
     setLineThickness('medium');
     setLineStyle('solid');
@@ -544,20 +571,20 @@ const App: React.FC = () => {
             let finalPrompt = userInstruction;
             const prefix = T.promptPrefixes.image_to_image[selectedFeature.key];
 
-            // The detailed prompt for interior design starts with 'Giữ nguyên cấu trúc' or 'Maintain the existing...', this check prevents adding the generic prefix.
-            // FIX: Accessing a string key on the translation object, not a FeatureKey enum member.
             if (prefix && !prompt.startsWith(T.promptPrefixes.image_to_image['INSTANT_INTERIOR_PREFIX_CHECK']!)) {
                 finalPrompt = `${prefix} ${userInstruction}`;
             }
 
             if (selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING) {
+              const drawingTypePrefix = T.techDrawingTypePrompts[drawingType as keyof typeof T.techDrawingTypePrompts] || '';
               const techSpec = T.techDrawingSpecifications({
                   scale: drawingScale,
                   thickness: T.techDrawingOptions.lineThickness.options[lineThickness as keyof typeof T.techDrawingOptions.lineThickness.options],
                   style: T.techDrawingOptions.lineStyle.options[lineStyle as keyof typeof T.techDrawingOptions.lineStyle.options],
                   library: T.techDrawingOptions.symbolLibrary.options[symbolLibrary as keyof typeof T.techDrawingOptions.symbolLibrary.options]
               });
-              finalPrompt = `${finalPrompt}. ${techSpec}`;
+              // The `prompt` state already contains the AI-generated description of the building.
+              finalPrompt = `${drawingTypePrefix} based on this description: "${prompt}". ${techSpec}`;
             }
 
           finalPrompt += creativePromptAdditions;
@@ -615,6 +642,7 @@ const App: React.FC = () => {
         detailLevel,
         cameraAngle,
         setting,
+        drawingType,
         drawingScale,
         lineThickness,
         lineStyle,
@@ -644,7 +672,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [prompt, uploadedImage, decalImage, selectedFeature, ai, aspectRatio, T, language, negativePrompt, stylePreset, detailLevel, startDate, endDate, workerCount, dimensionLength, dimensionWidth, dimensionHeight, drawingScale, lineThickness, lineStyle, symbolLibrary, cameraAngle, setting]);
+  }, [prompt, uploadedImage, decalImage, selectedFeature, ai, aspectRatio, T, language, negativePrompt, stylePreset, detailLevel, startDate, endDate, workerCount, dimensionLength, dimensionWidth, dimensionHeight, drawingType, drawingScale, lineThickness, lineStyle, symbolLibrary, cameraAngle, setting]);
 
   const handleRefineImage = async () => {
     if (!refinePrompt || !refinementHistory[historyIndex]) {
@@ -732,7 +760,6 @@ const App: React.FC = () => {
 
   const handleRedo = () => {
     if (historyIndex < refinementHistory.length - 1) {
-        // FIX: Redo should increment the history index, not decrement it.
         setHistoryIndex(prevIndex => prevIndex + 1);
     }
   };
@@ -755,6 +782,7 @@ const App: React.FC = () => {
     setSetting(settings.setting || '');
     
     // Tech Drawing settings
+    setDrawingType(settings.drawingType || 'front_elevation');
     setDrawingScale(settings.drawingScale || '1:100');
     setLineThickness(settings.lineThickness || 'medium');
     setLineStyle(settings.lineStyle || 'solid');
@@ -1034,14 +1062,29 @@ const App: React.FC = () => {
                     </div>
                 )}
 
-                <label htmlFor="prompt-input" style={styles.label}>{T.promptLabel}</label>
+                {selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <label htmlFor="drawing-type-select" style={styles.label}>{T.techDrawingTypeLabel}</label>
+                    <select id="drawing-type-select" value={drawingType} onChange={e => setDrawingType(e.target.value)} style={styles.select}>
+                      {Object.entries(T.techDrawingTypes).map(([key, value]) => (
+                          <option key={key} value={key}>{value}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <label htmlFor="prompt-input" style={styles.label}>
+                  {selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING ? T.techDrawingDescriptionLabel : T.promptLabel}
+                </label>
+                 {isGeneratingDescription && <p style={styles.suggestionsLoader}>{T.analyzingForDescription}</p>}
                 <textarea
                   id="prompt-input"
                   value={prompt}
                   onChange={e => setPrompt(e.target.value)}
-                  placeholder={selectedFeatureText.promptPlaceholder}
+                  placeholder={isGeneratingDescription ? '' : selectedFeatureText.promptPlaceholder}
                   rows={5}
                   style={styles.textarea}
+                  disabled={isGeneratingDescription}
                 />
                 
                 {(isGeneratingSuggestions || promptSuggestions.length > 0) && (
@@ -1203,7 +1246,7 @@ const App: React.FC = () => {
               </div>
               
               <div>
-                <button onClick={handleGenerate} disabled={isLoading || isGeneratingDetailedPrompt} style={{...styles.generateButton, ...((isLoading || isGeneratingDetailedPrompt) ? styles.generateButtonDisabled : {})}}>
+                <button onClick={handleGenerate} disabled={isLoading || isGeneratingDetailedPrompt || isGeneratingDescription} style={{...styles.generateButton, ...((isLoading || isGeneratingDetailedPrompt || isGeneratingDescription) ? styles.generateButtonDisabled : {})}}>
                   {isLoading ? T.generatingButton : T.generateButton}
                 </button>
                 {error && <p style={styles.errorText}>{error}</p>}
@@ -1692,6 +1735,8 @@ const styles: { [key: string]: React.CSSProperties } = {
         fontSize: '13px',
         color: '#a0aec0',
         width: '100%',
+        marginBottom: '4px',
+        fontStyle: 'italic',
     },
     // --- START EDIT MODAL STYLES ---
     editModalOverlay: {

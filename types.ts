@@ -26,6 +26,7 @@ export interface RenderSettings {
   cameraAngle?: string;
   setting?: string;
   // Tech Drawing settings
+  drawingType?: string;
   drawingScale?: string;
   lineThickness?: string;
   lineStyle?: string;

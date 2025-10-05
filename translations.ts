@@ -19,6 +19,7 @@ type Translations = {
     };
     promptLabel: string;
     analyzingForSuggestions: string;
+    analyzingForDescription: string;
     generateDetailedPrompt: string;
     generatingDetailedPrompt: string;
     mainImageLabel: string;
@@ -111,6 +112,20 @@ type Translations = {
     suggestionPrompts: {
       [key in FeatureKey | 'default' | 'detailedStructurePrompt']?: string;
     };
+    techDrawingDescriptionLabel: string;
+    techDrawingTypeLabel: string;
+    techDrawingTypes: {
+      front_elevation: string;
+      side_elevation: string;
+      plan_view: string;
+      section_cut: string;
+    };
+    techDrawingTypePrompts: {
+      front_elevation: string;
+      side_elevation: string;
+      plan_view: string;
+      section_cut: string;
+    };
     techDrawingOptions: {
       groupLabel: string;
       drawingScale: { label: string; placeholder: string; };
@@ -191,8 +206,8 @@ export const translations: Translations = {
       },
        [FeatureKey.REAL_TO_TECH_DRAWING]: {
         title: "Chuyển Ảnh Thực thành Bản vẽ Kỹ thuật 2D",
-        description: "Tải lên ảnh chụp công trình thực tế. AI sẽ chuyển đổi nó thành một bản vẽ kỹ thuật với các đường nét, chi tiết và ký hiệu chuyên nghiệp.",
-        promptPlaceholder: "ví dụ: Bản vẽ mặt cắt ngang, chi tiết cửa sổ nhôm kính",
+        description: "Tải lên ảnh chụp công trình thực tế. AI sẽ tự động phân tích và chuyển đổi nó thành một bản vẽ kỹ thuật theo lựa chọn của bạn.",
+        promptPlaceholder: "AI sẽ tự động tạo mô tả kỹ thuật sau khi bạn tải ảnh lên...",
         imageUploadLabel: "Tải lên Ảnh chụp công trình thực tế",
       },
       [FeatureKey.COST_CALCULATION]: {
@@ -229,6 +244,7 @@ export const translations: Translations = {
     },
     promptLabel: "Yêu cầu",
     analyzingForSuggestions: "Đang phân tích ảnh để đưa ra gợi ý...",
+    analyzingForDescription: "AI đang phân tích ảnh để tạo mô tả kỹ thuật...",
     generateDetailedPrompt: "Đề xuất Prompt Chi tiết từ Ảnh",
     generatingDetailedPrompt: "Đang phân tích cấu trúc...",
     mainImageLabel: "Ảnh chính cần chỉnh sửa",
@@ -328,7 +344,7 @@ export const translations: Translations = {
         [FeatureKey.MASTER_PLAN]: "Dựa trên bản đồ hoặc ảnh vệ tinh này, hãy tạo ra một bản quy hoạch tổng thể. Đảm bảo thiết kế của bạn tích hợp chặt chẽ với các đặc điểm hiện có trong ảnh. Yêu cầu chi tiết:",
         [FeatureKey.SKETCHUP_FINALIZE]: "Phân tích bản phác thảo hoặc mô hình đường nét này. Render nó thành một hình ảnh quang học, thêm vào các kết cấu và ánh sáng thực tế. TUYỆT ĐỐI KHÔNG thay đổi hình dạng kiến trúc cơ bản. Yêu cầu chi tiết:",
         [FeatureKey.PLAN_TO_3D]: "Dựa trên mặt bằng 2D này, hãy dựng một mô hình khối 3D. Mô hình phải phản ánh chính xác tỷ lệ và cách sắp xếp các phòng như trong bản vẽ. Yêu cầu chi tiết:",
-        [FeatureKey.REAL_TO_TECH_DRAWING]: "Phân tích ảnh chụp thực tế này và chuyển đổi nó thành một bản vẽ kỹ thuật 2D. Bản vẽ phải thể hiện chính xác tỷ lệ và các chi tiết kiến trúc có trong ảnh. Yêu cầu chi tiết:",
+        // REAL_TO_TECH_DRAWING is handled differently now, so we remove the generic prefix.
         INSTANT_INTERIOR_PREFIX_CHECK: "Giữ nguyên cấu trúc",
       }
     },
@@ -339,9 +355,23 @@ export const translations: Translations = {
       [FeatureKey.SMART_EDIT]: "Bạn là một AI trợ lý chỉnh sửa ảnh kiến trúc. Phân tích hình ảnh này và đề xuất 3-4 thay đổi cụ thể có thể thực hiện (ví dụ: 'thay đổi vật liệu tường thành gạch', 'thêm cây xanh ở ban công', 'làm cho bầu trời trong xanh hơn').",
       [FeatureKey.SKETCHUP_FINALIZE]: "Bạn là một AI chuyên gia render. Phân tích bản vẽ đường nét/sketchup này và đề xuất 3-4 kịch bản render khác nhau, tập trung vào vật liệu, ánh sáng ban ngày, hoặc bối cảnh (ví dụ: 'render với vật liệu bê tông và kính, ánh sáng ban ngày', 'đặt trong bối cảnh đô thị vào lúc hoàng hôn').",
       [FeatureKey.PLAN_TO_3D]: "Bạn là một AI chuyên gia mô hình hóa 3D. Phân tích mặt bằng 2D này và đề xuất 3-4 prompt để tạo mô hình 3D, tập trung vào các kiểu khối khác nhau (ví dụ: 'mô hình khối trắng đơn giản', 'mô hình 3D với vật liệu cơ bản', 'mô hình 3D cắt lớp để lộ nội thất').",
-      [FeatureKey.REAL_TO_TECH_DRAWING]: "Bạn là một AI trợ lý kiến trúc sư. Phân tích hình ảnh công trình này và đề xuất 3-4 loại bản vẽ kỹ thuật có thể được tạo ra (ví dụ: 'tạo bản vẽ mặt đứng chính', 'vẽ chi tiết mặt cắt cửa sổ', 'phác thảo phối cảnh 2 điểm tụ').",
+      [FeatureKey.REAL_TO_TECH_DRAWING]: "Bạn là một AI kiến trúc sư chuyên về bản vẽ kỹ thuật. Phân tích kỹ lưỡng ảnh chụp công trình được cung cấp. Tạo ra một mô tả kỹ thuật súc tích nhưng chi tiết về công trình. Tập trung vào các yếu tố chính như: phong cách kiến trúc, số tầng, hình dạng mái, vật liệu mặt tiền chính (ví dụ: gạch, bê tông, kính), loại và cách bố trí cửa sổ/cửa đi, và các đặc điểm nổi bật khác (ban công, cột, logia). Mô tả này sẽ được dùng làm cơ sở để tạo ra một bản vẽ kỹ thuật chi tiết.",
       detailedStructurePrompt: "Bạn là một AI phân tích kiến trúc. Hãy phân tích kỹ hình ảnh nội thất được cung cấp. Tạo ra một mô tả chi tiết về cấu trúc của không gian, bao gồm: cách bố trí phòng, vị trí và kiểu dáng của cửa sổ, cửa ra vào, cầu thang (nếu có), cột, dầm, và bất kỳ đặc điểm kiến trúc cố định nào khác. Bắt đầu mô tả của bạn bằng cụm từ 'Giữ nguyên cấu trúc phòng hiện có:'. Mô tả phải súc tích, chính xác và chỉ tập trung vào các yếu tố kiến trúc không thể thay đổi. Mục đích là để hướng dẫn một AI khác thiết kế lại nội thất mà không làm thay đổi các yếu tố kết cấu này.",
       default: "Phân tích hình ảnh này và đề xuất 3-4 prompt sáng tạo liên quan đến kiến trúc."
+    },
+    techDrawingDescriptionLabel: "Mô tả Công trình (AI-Generated)",
+    techDrawingTypeLabel: "Loại Bản vẽ",
+    techDrawingTypes: {
+      front_elevation: "Bản vẽ Mặt đứng",
+      side_elevation: "Bản vẽ Mặt bên",
+      plan_view: "Bản vẽ Mặt bằng",
+      section_cut: "Bản vẽ Mặt cắt",
+    },
+    techDrawingTypePrompts: {
+      front_elevation: "Tạo một bản vẽ kỹ thuật MẶT ĐỨNG chi tiết của công trình",
+      side_elevation: "Tạo một bản vẽ kỹ thuật MẶT BÊN chi tiết của công trình",
+      plan_view: "Tạo một bản vẽ kỹ thuật MẶT BẰNG TỔNG THỂ của công trình, thể hiện các không gian chính",
+      section_cut: "Tạo một bản vẽ kỹ thuật MẶT CẮT chi tiết của công trình, thể hiện rõ các tầng và kết cấu bên trong",
     },
     techDrawingOptions: {
       groupLabel: "Tùy chọn Bản vẽ Kỹ thuật",
@@ -429,8 +459,8 @@ export const translations: Translations = {
       },
       [FeatureKey.REAL_TO_TECH_DRAWING]: {
         title: "Real Photo to 2D Tech Drawing",
-        description: "Upload a real photo of a building. The AI will convert it into a technical drawing with professional lines, details, and symbols.",
-        promptPlaceholder: "e.g., Cross-section drawing, aluminum and glass window details",
+        description: "Upload a real photo of a building. The AI will automatically analyze it and convert it into a technical drawing based on your selection.",
+        promptPlaceholder: "The AI will automatically generate a technical description after you upload an image...",
         imageUploadLabel: "Upload a Real Photo of the Building",
       },
       [FeatureKey.COST_CALCULATION]: {
@@ -467,6 +497,7 @@ export const translations: Translations = {
     },
     promptLabel: "Prompt",
     analyzingForSuggestions: "Analyzing image for suggestions...",
+    analyzingForDescription: "AI is analyzing the image to create a technical description...",
     generateDetailedPrompt: "Suggest Detailed Prompt from Image",
     generatingDetailedPrompt: "Analyzing structure...",
     mainImageLabel: "Main Image to Edit",
@@ -566,7 +597,6 @@ export const translations: Translations = {
         [FeatureKey.MASTER_PLAN]: "Using this map or satellite image as a base, create a master plan. Ensure your design integrates tightly with the existing features shown in the image. Detailed request:",
         [FeatureKey.SKETCHUP_FINALIZE]: "Analyze this sketch or line model. Render it into a photorealistic image, adding realistic textures and lighting. STRICTLY DO NOT change the underlying architectural shape. Detailed request:",
         [FeatureKey.PLAN_TO_3D]: "Based on this 2D floor plan, extrude a 3D block model. The model must accurately reflect the proportions and arrangement of rooms as shown in the drawing. Detailed request:",
-        [FeatureKey.REAL_TO_TECH_DRAWING]: "Analyze this real photograph and convert it into a 2D technical drawing. The drawing must accurately represent the proportions and architectural details present in the photo. Detailed request:",
         INSTANT_INTERIOR_PREFIX_CHECK: "Maintain the existing",
       }
     },
@@ -577,9 +607,23 @@ export const translations: Translations = {
       [FeatureKey.SMART_EDIT]: "You are an architectural photo editing AI. Analyze this image and suggest 3-4 specific, concrete changes that could be made (e.g., 'change wall material to brick', 'add plants to the balcony', 'make the sky clearer').",
       [FeatureKey.SKETCHUP_FINALIZE]: "You are a rendering specialist AI. Analyze this line drawing/sketchup model and suggest 3-4 different rendering scenarios focusing on materials, time of day, or context (e.g., 'render with concrete and glass materials, daylight', 'place in an urban context at dusk').",
       [FeatureKey.PLAN_TO_3D]: "You are a 3D modeling AI. Analyze this 2D floor plan and suggest 3-4 prompts for creating a 3D model, focusing on different block styles (e.g., 'simple white block model', '3D model with basic materials', 'cut-away 3D model showing interior').",
-      [FeatureKey.REAL_TO_TECH_DRAWING]: "You are an architectural assistant AI. Analyze this building photo and suggest 3-4 types of technical drawings that could be generated from it (e.g., 'create a front elevation drawing', 'draw a detailed window cross-section', 'sketch a 2-point perspective').",
+      [FeatureKey.REAL_TO_TECH_DRAWING]: "You are an AI architect specializing in technical drawings. Carefully analyze the provided building photograph. Generate a concise but detailed technical description of the building. Focus on key elements like: architectural style, number of floors, roof shape, main facade materials (e.g., brick, concrete, glass), window/door types and arrangement, and other prominent features (balconies, columns, loggias). This description will be used as the basis for creating a detailed technical drawing.",
       detailedStructurePrompt: "You are an architectural analysis AI. Analyze the provided interior image. Generate a detailed description of the space's structure, including: room layout, position and style of windows, doors, stairs (if any), columns, beams, and other fixed architectural features. Start your description with 'Maintain the existing room structure:'. The description must be concise, accurate, and focus only on immutable architectural elements. The purpose is to guide another AI to redesign the interior without altering these structural components.",
       default: "Analyze this image and provide 3-4 creative, architecture-related prompt suggestions."
+    },
+    techDrawingDescriptionLabel: "Building Description (AI-Generated)",
+    techDrawingTypeLabel: "Drawing Type",
+    techDrawingTypes: {
+      front_elevation: "Front Elevation Drawing",
+      side_elevation: "Side Elevation Drawing",
+      plan_view: "Plan View Drawing",
+      section_cut: "Section Cut Drawing",
+    },
+    techDrawingTypePrompts: {
+      front_elevation: "Create a detailed technical FRONT ELEVATION drawing of the building",
+      side_elevation: "Create a detailed technical SIDE ELEVATION drawing of the building",
+      plan_view: "Create a detailed technical SITE PLAN drawing of the building, showing the main spaces",
+      section_cut: "Create a detailed technical SECTION CUT drawing of the building, clearly showing the floors and internal structure",
     },
     techDrawingOptions: {
       groupLabel: "Technical Drawing Options",
