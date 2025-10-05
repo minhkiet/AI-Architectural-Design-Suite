@@ -151,9 +151,14 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>('vi');
   const [isStudioVisible, setIsStudioVisible] = useState<boolean>(false);
 
+  // New Creative Controls
+  const [cameraAngle, setCameraAngle] = useState<string>('eye_level');
+  const [setting, setSetting] = useState<string>('');
+
   // Prompt Suggestions State
   const [promptSuggestions, setPromptSuggestions] = useState<string[]>([]);
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState<boolean>(false);
+  const [isGeneratingDetailedPrompt, setIsGeneratingDetailedPrompt] = useState<boolean>(false);
 
   // Task Generator State
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -179,8 +184,11 @@ const App: React.FC = () => {
   const [refineDecalImage, setRefineDecalImage] = useState<File | null>(null);
   const [refineDecalImageUrl, setRefineDecalImageUrl] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState<boolean>(false);
-  const [refinedImageUrl, setRefinedImageUrl] = useState<string | null>(null);
   const [refineError, setRefineError] = useState<string | null>(null);
+  const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [isShowingRefineResult, setIsShowingRefineResult] = useState<boolean>(false);
+
 
   const T = useMemo(() => translations[language], [language]);
   
@@ -195,6 +203,16 @@ const App: React.FC = () => {
       if (refineDecalImageUrl) URL.revokeObjectURL(refineDecalImageUrl);
     };
   }, [uploadedImageUrl, decalImageUrl, refineDecalImageUrl]);
+
+  useEffect(() => {
+    // Initialize refinement history when the modal is opened
+    if (isEditingOutput && generatedImageUrl) {
+        setRefinementHistory([generatedImageUrl]);
+        setHistoryIndex(0);
+        setIsShowingRefineResult(false);
+    }
+  }, [isEditingOutput, generatedImageUrl]);
+
 
   const generatePromptSuggestions = useCallback(async (imageFile: File, featureKey: FeatureKey) => {
     setIsGeneratingSuggestions(true);
@@ -239,6 +257,36 @@ const App: React.FC = () => {
       setIsGeneratingSuggestions(false);
     }
   }, [ai, T]);
+
+  const handleGenerateDetailedPrompt = useCallback(async () => {
+    if (!uploadedImage) return;
+
+    setIsGeneratingDetailedPrompt(true);
+    setError(null);
+
+    try {
+        const { data, mimeType } = await fileToBase64(uploadedImage);
+        
+        const systemInstruction = T.suggestionPrompts.detailedStructurePrompt;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [{ inlineData: { data, mimeType } }] },
+            config: {
+                systemInstruction,
+            }
+        });
+
+        const descriptivePrompt = response.text.trim();
+        setPrompt(descriptivePrompt);
+
+    } catch (e) {
+        console.error("Failed to generate detailed prompt:", e);
+        setError(T.errors.general(e instanceof Error ? e.message : String(e)));
+    } finally {
+        setIsGeneratingDetailedPrompt(false);
+    }
+  }, [ai, T, uploadedImage]);
 
   const processMainFile = (file: File | null) => {
     if (file) {
@@ -305,6 +353,9 @@ const App: React.FC = () => {
     setDimensionHeight('');
     setPromptSuggestions([]);
     setIsGeneratingSuggestions(false);
+    // Reset creative controls
+    setCameraAngle('eye_level');
+    setSetting('');
     // Reset tech drawing options
     setDrawingScale('1:100');
     setLineThickness('medium');
@@ -319,14 +370,34 @@ const App: React.FC = () => {
     setGeneratedImageUrl(null);
     setGeneratedTextOutput(null);
 
-    if (!prompt) {
+    if (!prompt && selectedFeature.key !== FeatureKey.INSTANT_INTERIOR) {
       setError(T.errors.promptRequired);
       setIsLoading(false);
       return;
     }
-    
+    if (!prompt && selectedFeature.key === FeatureKey.INSTANT_INTERIOR && stylePreset === 'none') {
+        setError(T.errors.promptOrStyleRequired);
+        setIsLoading(false);
+        return;
+    }
+
     try {
       let resultImageUrl: string;
+
+      let creativePromptAdditions = '';
+      const showCreativeControls = [FeatureKey.SURREAL_EXTERIOR, FeatureKey.SKETCHUP_FINALIZE, FeatureKey.PLAN_TO_3D, FeatureKey.INSTANT_INTERIOR].includes(selectedFeature.key);
+      if (showCreativeControls) {
+        const additions = [];
+        if (cameraAngle && cameraAngle !== 'none') {
+          additions.push(T.cameraAngles[cameraAngle as keyof typeof T.cameraAngles]);
+        }
+        if (setting.trim() !== '') {
+          additions.push(`setting: ${setting.trim()}`);
+        }
+        if (additions.length > 0) {
+          creativePromptAdditions = `, ${additions.join(', ')}`;
+        }
+      }
       
       // Special case for Smart Edit with two images
       if (selectedFeature.key === FeatureKey.SMART_EDIT) {
@@ -341,7 +412,7 @@ const App: React.FC = () => {
           const fullPrompt = `Using the second image as a decal/detail/texture, modify the first image according to the instruction: "${prompt}"`;
 
           const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash-image-preview',
+              model: 'gemini-2.5-flash-image',
               contents: { 
                   parts: [
                       { inlineData: { data: mainData, mimeType: mainMime } },
@@ -458,25 +529,42 @@ const App: React.FC = () => {
         }
 
         if (selectedFeature.imageUpload !== 'none' && uploadedImage) { // Image-to-image
-          let finalPrompt = prompt;
-          const prefix = T.promptPrefixes.image_to_image[selectedFeature.key];
-          if (prefix) {
-              finalPrompt = `${prefix} ${prompt}`;
-          }
-          
-          if (selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING) {
-            const techSpec = T.techDrawingSpecifications({
-                scale: drawingScale,
-                thickness: T.techDrawingOptions.lineThickness.options[lineThickness],
-                style: T.techDrawingOptions.lineStyle.options[lineStyle],
-                library: T.techDrawingOptions.symbolLibrary.options[symbolLibrary]
-            });
-            finalPrompt = `${finalPrompt}. ${techSpec}`;
-          }
+            let userInstruction = prompt;
+
+            // For INSTANT_INTERIOR, combine user prompt with the detailed style description for better guidance.
+            if (selectedFeature.key === FeatureKey.INSTANT_INTERIOR && stylePreset !== 'none' && T.stylePresetDescriptions) {
+                const styleDescription = T.stylePresetDescriptions[stylePreset as keyof typeof T.stylePresetDescriptions] || '';
+                if (userInstruction.trim() && !userInstruction.startsWith('Maintain the existing room structure:')) {
+                    userInstruction = `${userInstruction}. ${styleDescription}`;
+                } else if (!userInstruction.trim()) {
+                    userInstruction = styleDescription;
+                }
+            }
+            
+            let finalPrompt = userInstruction;
+            const prefix = T.promptPrefixes.image_to_image[selectedFeature.key];
+
+            // The detailed prompt for interior design starts with 'Giữ nguyên cấu trúc' or 'Maintain the existing...', this check prevents adding the generic prefix.
+            // FIX: Accessing a string key on the translation object, not a FeatureKey enum member.
+            if (prefix && !prompt.startsWith(T.promptPrefixes.image_to_image['INSTANT_INTERIOR_PREFIX_CHECK']!)) {
+                finalPrompt = `${prefix} ${userInstruction}`;
+            }
+
+            if (selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING) {
+              const techSpec = T.techDrawingSpecifications({
+                  scale: drawingScale,
+                  thickness: T.techDrawingOptions.lineThickness.options[lineThickness as keyof typeof T.techDrawingOptions.lineThickness.options],
+                  style: T.techDrawingOptions.lineStyle.options[lineStyle as keyof typeof T.techDrawingOptions.lineStyle.options],
+                  library: T.techDrawingOptions.symbolLibrary.options[symbolLibrary as keyof typeof T.techDrawingOptions.symbolLibrary.options]
+              });
+              finalPrompt = `${finalPrompt}. ${techSpec}`;
+            }
+
+          finalPrompt += creativePromptAdditions;
 
           const { data, mimeType } = await fileToBase64(uploadedImage);
           const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
+            model: 'gemini-2.5-flash-image',
             contents: { parts: [{ inlineData: { data, mimeType } }, { text: finalPrompt }] },
             config: { responseModalities: [Modality.IMAGE, Modality.TEXT] },
           });
@@ -486,11 +574,23 @@ const App: React.FC = () => {
         } else { // Text-to-image
           let finalPrompt = prompt;
           if (stylePreset !== 'none') {
-              const stylePrefixes: { [key: string]: string } = { photorealistic: 'A photorealistic, hyper-detailed photograph of', cartoon: 'A vibrant cartoon-style illustration of', impressionist: 'An impressionist painting of', digital_art: 'A digital art piece of', cinematic: 'A cinematic, dramatic, wide-angle shot of' };
+              const stylePrefixes: { [key: string]: string } = {
+                  photorealistic: 'A photorealistic, hyper-detailed photograph of',
+                  minimalist: 'In a minimalist architectural style, clean lines, simple forms, uncluttered, monochromatic palette,',
+                  modern: 'In a modern architectural style, characterized by glass, steel, and reinforced concrete, open floor plans,',
+                  brutalist: 'In a Brutalist architectural style, showcasing raw concrete, blocky forms, and a monolithic appearance,',
+                  art_deco: 'In an Art Deco architectural style, featuring rich colors, bold geometric shapes, and lavish ornamentation,',
+                  gothic: 'In a Gothic architectural style, with pointed arches, ribbed vaults, and flying buttresses, intricate ornamentation,',
+                  neoclassical: 'In a Neoclassical architectural style, defined by grand scale, simple geometric forms, and dramatic use of columns,',
+                  deconstructivist: 'In a Deconstructivist architectural style, characterized by fragmentation, non-rectilinear shapes, and a distorted appearance,',
+                  biophilic: 'In a Biophilic architectural style, integrating nature, natural light, vegetation, and organic shapes into the design,',
+              };
               if (stylePrefixes[stylePreset]) finalPrompt = `${stylePrefixes[stylePreset]} ${prompt}`;
           }
           const detailSuffixes: { [key: string]: string } = { low: ', simple, low detail', high: ', intricate details, hyper-detailed, sharp focus' };
           if (detailSuffixes[detailLevel]) finalPrompt += detailSuffixes[detailLevel];
+
+          finalPrompt += creativePromptAdditions;
 
           const config: any = { numberOfImages: 1, outputMimeType: 'image/jpeg', aspectRatio: aspectRatio };
           if (negativePrompt.trim() !== '') config.negativePrompt = negativePrompt;
@@ -513,6 +613,8 @@ const App: React.FC = () => {
         stylePreset,
         aspectRatio,
         detailLevel,
+        cameraAngle,
+        setting,
         drawingScale,
         lineThickness,
         lineStyle,
@@ -542,19 +644,20 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [prompt, uploadedImage, decalImage, selectedFeature, ai, aspectRatio, T, language, negativePrompt, stylePreset, detailLevel, startDate, endDate, workerCount, dimensionLength, dimensionWidth, dimensionHeight, drawingScale, lineThickness, lineStyle, symbolLibrary]);
+  }, [prompt, uploadedImage, decalImage, selectedFeature, ai, aspectRatio, T, language, negativePrompt, stylePreset, detailLevel, startDate, endDate, workerCount, dimensionLength, dimensionWidth, dimensionHeight, drawingScale, lineThickness, lineStyle, symbolLibrary, cameraAngle, setting]);
 
   const handleRefineImage = async () => {
-    if (!refinePrompt || !generatedImageUrl) {
+    if (!refinePrompt || !refinementHistory[historyIndex]) {
         setRefineError(T.errors.promptRequired);
         return;
     }
     setIsRefining(true);
     setRefineError(null);
+    setIsShowingRefineResult(false);
 
     try {
         const parts: any[] = [];
-        const mainImageParts = dataUrlToParts(generatedImageUrl);
+        const mainImageParts = dataUrlToParts(refinementHistory[historyIndex]);
         parts.push({ inlineData: { data: mainImageParts.data, mimeType: mainImageParts.mimeType } });
 
         if (refineDecalImage) {
@@ -564,7 +667,7 @@ const App: React.FC = () => {
         parts.push({ text: refinePrompt });
         
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
+            model: 'gemini-2.5-flash-image',
             contents: { parts },
             config: { responseModalities: [Modality.IMAGE, Modality.TEXT] },
         });
@@ -573,11 +676,16 @@ const App: React.FC = () => {
         if (!imagePart?.inlineData) throw new Error(T.errors.noImageGenerated);
         
         const newImageUrl = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
-        setRefinedImageUrl(newImageUrl);
+        
+        const newHistory = [...refinementHistory.slice(0, historyIndex + 1), newImageUrl];
+        setRefinementHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+        setIsShowingRefineResult(true);
 
     } catch (e) {
         console.error(e);
         setRefineError(T.errors.general(e instanceof Error ? e.message : String(e)));
+        setIsShowingRefineResult(true); // Show error on the result screen
     } finally {
         setIsRefining(false);
     }
@@ -587,29 +695,48 @@ const App: React.FC = () => {
     setIsEditingOutput(false);
     setRefinePrompt('');
     clearRefineDecalImage();
-    setRefinedImageUrl(null);
     setIsRefining(false);
     setRefineError(null);
+    setRefinementHistory([]);
+    setHistoryIndex(-1);
+    setIsShowingRefineResult(false);
   };
 
   const handleSaveChanges = () => {
-      if (refinedImageUrl && history.length > 0) {
-          setGeneratedImageUrl(refinedImageUrl);
+      const currentImage = refinementHistory[historyIndex];
+      if (currentImage && history.length > 0) {
+          setGeneratedImageUrl(currentImage);
           const latestHistoryItem = history[0];
           const updatedHistoryItem = { 
               ...latestHistoryItem, 
-              imageUrl: refinedImageUrl,
-              prompt: `${latestHistoryItem.prompt}\n\n[${T.refinedLabel}]: ${refinePrompt}`
+              imageUrl: currentImage,
+              prompt: `${latestHistoryItem.prompt}\n\n[${T.refinedLabel}]: ${refinePrompt}` // Note: This captures the last prompt
           };
           setHistory([updatedHistoryItem, ...history.slice(1)]);
           closeAndResetEditModal();
       }
   };
 
-  const handleTryAgain = () => {
-      setRefinedImageUrl(null);
+  const handleMakeAnotherChange = () => {
+      setIsShowingRefineResult(false);
       setRefineError(null);
+      setRefinePrompt('');
+      clearRefineDecalImage();
   };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+        setHistoryIndex(prevIndex => prevIndex - 1);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < refinementHistory.length - 1) {
+        // FIX: Redo should increment the history index, not decrement it.
+        setHistoryIndex(prevIndex => prevIndex + 1);
+    }
+  };
+
 
   const handleRerun = (item: RenderHistoryItem) => {
     // Switch to the correct feature, which also resets unrelated state
@@ -624,6 +751,8 @@ const App: React.FC = () => {
     setStylePreset(settings.stylePreset || 'none');
     setAspectRatio(settings.aspectRatio || '1:1');
     setDetailLevel(settings.detailLevel || 'medium');
+    setCameraAngle(settings.cameraAngle || 'eye_level');
+    setSetting(settings.setting || '');
     
     // Tech Drawing settings
     setDrawingScale(settings.drawingScale || '1:100');
@@ -789,7 +918,16 @@ const App: React.FC = () => {
         ))}
     </div>
   );
+
+  const showCreativeControls = [
+    FeatureKey.SURREAL_EXTERIOR,
+    FeatureKey.SKETCHUP_FINALIZE,
+    FeatureKey.PLAN_TO_3D,
+    FeatureKey.INSTANT_INTERIOR
+  ].includes(selectedFeature.key);
   
+  const showStylePresetControl = (selectedFeature.outputType === 'image' && !uploadedImageUrl) || selectedFeature.key === FeatureKey.INSTANT_INTERIOR;
+
   if (!isStudioVisible) {
     return (
         <div style={styles.homePageContainer}>
@@ -881,6 +1019,20 @@ const App: React.FC = () => {
                     <ImageUploader label={selectedFeatureText.imageUploadLabel} imageUrl={uploadedImageUrl} onFileSelect={processMainFile} onClear={clearMainImage} T={T} styles={styles} />
                 ) : null}
 
+                {selectedFeature.key === FeatureKey.INSTANT_INTERIOR && uploadedImageUrl && (
+                    <div style={{ margin: '0 0 16px 0' }}>
+                        <button
+                            onClick={handleGenerateDetailedPrompt}
+                            disabled={isGeneratingDetailedPrompt || isLoading}
+                            style={{...styles.suggestionButton, width: '100%', padding: '10px 12px', textAlign: 'center', fontSize: '14px', ...((isGeneratingDetailedPrompt || isLoading) ? styles.generateButtonDisabled : {})}}
+                            className="tooltip-container tooltip-top"
+                            data-tooltip={T.tooltips.detailedPromptTooltip}
+                        >
+                            <i className={`fa-solid ${isGeneratingDetailedPrompt ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`} style={{ marginRight: '8px' }}></i>
+                            {isGeneratingDetailedPrompt ? T.generatingDetailedPrompt : T.generateDetailedPrompt}
+                        </button>
+                    </div>
+                )}
 
                 <label htmlFor="prompt-input" style={styles.label}>{T.promptLabel}</label>
                 <textarea
@@ -904,6 +1056,31 @@ const App: React.FC = () => {
                             ))
                         )}
                     </div>
+                )}
+
+                {showCreativeControls && (
+                  <>
+                    <div style={{ marginTop: '20px' }} className="tooltip-container tooltip-top" data-tooltip={T.tooltips.tooltipCameraAngle}>
+                      <label htmlFor="camera-angle-select" style={styles.label}>{T.cameraAngleLabel}</label>
+                      <select id="camera-angle-select" value={cameraAngle} onChange={e => setCameraAngle(e.target.value)} style={styles.select}>
+                        {Object.entries(T.cameraAngles).map(([key, value]) => (
+                            <option key={key} value={key}>{value}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                     <div style={{ marginTop: '20px' }} className="tooltip-container tooltip-top" data-tooltip={T.tooltips.tooltipSetting}>
+                      <label htmlFor="setting-input" style={styles.label}>{T.settingLabel}</label>
+                      <textarea
+                        id="setting-input"
+                        value={setting}
+                        onChange={e => setSetting(e.target.value)}
+                        placeholder={T.settingPlaceholder}
+                        rows={3}
+                        style={styles.textarea}
+                      />
+                    </div>
+                  </>
                 )}
                 
                 {selectedFeature.key === FeatureKey.REAL_TO_TECH_DRAWING && (
@@ -969,21 +1146,27 @@ const App: React.FC = () => {
                     </div>
                   </>
                 )}
+                
+                {showStylePresetControl && (
+                    <div style={{ marginTop: '20px' }} className="tooltip-container tooltip-top" data-tooltip={T.tooltips.stylePreset}>
+                        <label htmlFor="style-preset-select" style={styles.label}>{T.stylePresetLabel}</label>
+                        <select id="style-preset-select" value={stylePreset} onChange={e => setStylePreset(e.target.value)} style={styles.select}>
+                            <option value="none">{T.stylePresets.none}</option>
+                            <option value="photorealistic">{T.stylePresets.photorealistic}</option>
+                            <option value="minimalist">{T.stylePresets.minimalist}</option>
+                            <option value="modern">{T.stylePresets.modern}</option>
+                            <option value="brutalist">{T.stylePresets.brutalist}</option>
+                            <option value="art_deco">{T.stylePresets.art_deco}</option>
+                            <option value="gothic">{T.stylePresets.gothic}</option>
+                            <option value="neoclassical">{T.stylePresets.neoclassical}</option>
+                            <option value="deconstructivist">{T.stylePresets.deconstructivist}</option>
+                            <option value="biophilic">{T.stylePresets.biophilic}</option>
+                        </select>
+                    </div>
+                )}
 
                 {selectedFeature.outputType === 'image' && !uploadedImageUrl && (
                   <>
-                    <div style={{ marginTop: '20px' }} className="tooltip-container tooltip-top" data-tooltip={T.tooltips.stylePreset}>
-                      <label htmlFor="style-preset-select" style={styles.label}>{T.stylePresetLabel}</label>
-                      <select id="style-preset-select" value={stylePreset} onChange={e => setStylePreset(e.target.value)} style={styles.select}>
-                        <option value="none">{T.stylePresets.none}</option>
-                        <option value="photorealistic">{T.stylePresets.photorealistic}</option>
-                        <option value="cartoon">{T.stylePresets.cartoon}</option>
-                        <option value="impressionist">{T.stylePresets.impressionist}</option>
-                        <option value="digital_art">{T.stylePresets.digital_art}</option>
-                        <option value="cinematic">{T.stylePresets.cinematic}</option>
-                      </select>
-                    </div>
-
                     <div style={{ marginTop: '20px' }} className="tooltip-container tooltip-top" data-tooltip={T.tooltips.negativePrompt}>
                       <label htmlFor="negative-prompt-input" style={styles.label}>{T.negativePromptLabel}</label>
                       <textarea
@@ -1020,7 +1203,7 @@ const App: React.FC = () => {
               </div>
               
               <div>
-                <button onClick={handleGenerate} disabled={isLoading} style={{...styles.generateButton, ...(isLoading ? styles.generateButtonDisabled : {})}}>
+                <button onClick={handleGenerate} disabled={isLoading || isGeneratingDetailedPrompt} style={{...styles.generateButton, ...((isLoading || isGeneratingDetailedPrompt) ? styles.generateButtonDisabled : {})}}>
                   {isLoading ? T.generatingButton : T.generateButton}
                 </button>
                 {error && <p style={styles.errorText}>{error}</p>}
@@ -1070,7 +1253,7 @@ const App: React.FC = () => {
         </div>
          <footer style={{...styles.footer, padding: '24px 0 0 0' }}>{T.footerText}</footer>
 
-        {isEditingOutput && generatedImageUrl && (
+        {isEditingOutput && refinementHistory.length > 0 && (
             <div style={styles.editModalOverlay}>
                 <div style={styles.editModalContent} className="animate-fade-in">
                     <div style={styles.editModalHeader}>
@@ -1079,25 +1262,31 @@ const App: React.FC = () => {
                           <i className="fa-solid fa-times"></i>
                         </button>
                     </div>
-
                     {isRefining ? (
-                        <div style={styles.editModalBody}>
+                        <div style={{...styles.editModalBody, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <div style={styles.editModalLoader}>
                                 <div className="loader"></div>
                                 <p style={styles.loaderText}>{T.refiningButton}</p>
                             </div>
                         </div>
-                    ) : refinedImageUrl ? (
+                    ) : isShowingRefineResult ? (
                         <div style={styles.editModalBody}>
-                            <img src={refinedImageUrl} alt={T.refinedImageAlt} style={styles.refinedImagePreview} />
+                            <img src={refinementHistory[historyIndex]} alt={T.refinedImageAlt} style={styles.refinedImagePreview} />
                              {refineError && <p style={styles.errorText}>{refineError}</p>}
                             <div style={styles.editModalActions}>
-                                <button onClick={handleSaveChanges} style={{...styles.generateButton, backgroundColor: '#2f855a' }}>{T.saveAndReplace}</button>
-                                <button onClick={handleTryAgain} style={{...styles.generateButton, backgroundColor: '#4a5568' }}>{T.tryAgain}</button>
+                                <div style={{display: 'flex', gap: '8px'}}>
+                                    <button onClick={handleUndo} disabled={historyIndex <= 0} style={{...styles.historyNavButton, ...(historyIndex <= 0 ? styles.generateButtonDisabled : {})}}><i className="fa-solid fa-undo"></i> {T.undoButton}</button>
+                                    <button onClick={handleRedo} disabled={historyIndex >= refinementHistory.length - 1} style={{...styles.historyNavButton, ...(historyIndex >= refinementHistory.length - 1 ? styles.generateButtonDisabled : {})}}><i className="fa-solid fa-redo"></i> {T.redoButton}</button>
+                                </div>
+                                <div style={{display: 'flex', gap: '8px', flexGrow: 1}}>
+                                    <button onClick={handleSaveChanges} style={{...styles.generateButton, backgroundColor: '#2f855a', flex: 1 }}>{T.saveAndReplace}</button>
+                                    <button onClick={handleMakeAnotherChange} style={{...styles.generateButton, backgroundColor: '#4a5568', flex: 1 }}>{T.makeAnotherChange}</button>
+                                </div>
                             </div>
                         </div>
                     ) : (
                         <div style={styles.editModalBody}>
+                             <img src={refinementHistory[historyIndex]} alt={T.refinedImageAlt} style={{...styles.refinedImagePreview, maxHeight: '200px', marginBottom: '16px'}} />
                             <ImageUploader label={T.refineDecalLabel} imageUrl={refineDecalImageUrl} onFileSelect={processRefineDecalFile} onClear={clearRefineDecalImage} T={T} styles={styles} />
                             <label htmlFor="refine-prompt-input" style={styles.label}>{T.refinePromptLabel}</label>
                             <textarea
@@ -1523,7 +1712,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         padding: '24px',
         border: '1px solid #4a5568',
         width: '90%',
-        maxWidth: '600px',
+        maxWidth: '700px',
         maxHeight: '90vh',
         display: 'flex',
         flexDirection: 'column',
@@ -1557,6 +1746,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         display: 'flex',
         gap: '12px',
         marginTop: '20px',
+        justifyContent: 'space-between'
     },
     editModalLoader: {
         display: 'flex',
@@ -1572,6 +1762,20 @@ const styles: { [key: string]: React.CSSProperties } = {
         borderRadius: '8px',
         border: '1px solid #4a5568',
         backgroundColor: '#1a202c',
+    },
+    historyNavButton: {
+      padding: '10px 16px',
+      borderRadius: '8px',
+      border: '1px solid #4a5568',
+      backgroundColor: '#2d3748',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: '600',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      transition: 'background-color 0.2s',
     },
     // --- END EDIT MODAL STYLES ---
 };

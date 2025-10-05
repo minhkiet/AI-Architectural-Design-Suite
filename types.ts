@@ -23,6 +23,8 @@ export interface RenderSettings {
   stylePreset?: string;
   aspectRatio?: string;
   detailLevel?: string;
+  cameraAngle?: string;
+  setting?: string;
   // Tech Drawing settings
   drawingScale?: string;
   lineThickness?: string;
